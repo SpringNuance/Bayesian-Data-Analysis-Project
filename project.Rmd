@@ -1,0 +1,95 @@
+---
+title: "BDA Project: Malicious and Benign Website URL detections"
+author: "Nguyen Xuan Binh, Duong Le"
+date: "January 2023"
+output: 
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    fig_caption: yes
+bibliography: bibliography.bib
+---
+
+```{r include=FALSE}
+library(rstan)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(grid)
+library(gridExtra)
+library(scales)
+library(loo)
+library(sentimentr)
+```
+
+# Introduction
+
+
+## Problem Description
+
+
+## Data Description
+
+Data source: https://data.mendeley.com/datasets/gdx3pkwp47/2
+
+## Main modeling idea
+
+
+
+# Separate model
+
+## Model description
+
+
+## Stan code and running option
+
+
+## Convergence diagnostics
+
+
+## Posterior predictive check
+
+
+## Predictive performance assessment
+
+
+## Prior sensitivity analysis
+
+# Hierarchical model
+
+## Model description
+
+
+## Stan code and running options
+
+
+## Convergence diagnostics
+
+
+## Posterior predictive check
+
+
+## Predictive performance assessment
+
+## Prior sensitivity analysis
+
+
+
+# Model comparision
+
+
+
+# Disscussion
+
+
+# Conclusion of the results
+
+
+
+
+# Reflection
+
+
+# References
+
+
