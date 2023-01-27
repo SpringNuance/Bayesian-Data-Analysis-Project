@@ -12,6 +12,7 @@ bibliography: bibliography.bib
 
 ```{r include=FALSE}
 library(rstan)
+library(cmdstanr)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
@@ -22,6 +23,9 @@ library(loo)
 library(sentimentr)
 library(stringr)
 library(gridExtra)
+library(MASS)
+#library(fitdistrplus)
+
 ```
 
 # Introduction
@@ -55,368 +59,202 @@ Data source: https://data.mendeley.com/datasets/gdx3pkwp47/2
 ## Main modeling idea
 
 # Data cleaning 
-```{r}
-# Load the dataframe
-train_websites <- read.csv("websites/Webpages_Classification_train_data.csv")
-test_websites <- read.csv("websites/Webpages_Classification_test_data.csv")
-```
 
-```{r}
-# Filter the train_websites to keep only rows where label is "bad"
-bad_rows <- train_websites %>% filter(label == "bad")
 
-# Filter the train_websites to keep only rows where label is not "bad"
-good_rows <- train_websites %>% filter(label != "bad")
-
-# Randomly select 300000 - nrow(bad_rows) rows from good_rows
-sample_rows <- good_rows %>% sample_n(200000 - nrow(bad_rows))
-
-# Concatenate bad_rows and sample_rows to create the new train_websites
-train_websites <- rbind(bad_rows, sample_rows)
-```
-
-```{r}
-# Filter the test_websites to keep only rows where label is "bad"
-bad_rows <- test_websites %>% filter(label == "bad")
-
-# Filter the test_websites to keep only rows where label is not "bad"
-good_rows <- test_websites %>% filter(label != "bad")
-
-# Randomly select 300000 - nrow(bad_rows) rows from good_rows
-sample_rows <- good_rows %>% sample_n(60000 - nrow(bad_rows))
-
-# Concatenate bad_rows and sample_rows to create the new test_websites
-test_websites <- rbind(bad_rows, sample_rows)
-```
-
-```{r}
-print(sum(train_websites$label=="bad"))
-print(sum(train_websites$label=="good"))
-
-print(sum(test_websites$label=="bad"))
-print(sum(test_websites$label=="good"))
-```
-```{r}
-
-
-# Define the special characters you want to count
-special_chars <- c("/","%", "#", "&”, “." , "," ,"=")
-
-# Create a new column "num_special" and populate it with the number of special characters in each URL
-
-train_websites$num_special <- sapply(train_websites$url, function(x) sum(str_count(x, paste(special_chars, collapse="|"))))
-
-test_websites$num_special <- sapply(test_websites$url, function(x) sum(str_count(x, paste(special_chars, collapse="|"))))
-```
-
-```{r}
-print(colnames(train_websites))
-keptColNames = c("label", "url_len", "geo_loc", "https", "js_len", "js_obf_len", "who_is", "num_special")
-train_websites <- train_websites[, keptColNames]
-
-print(colnames(test_websites))
-keptColNames = c("label", "url_len", "geo_loc", "https", "js_len", "js_obf_len", "who_is", "num_special")
-test_websites <- test_websites[, keptColNames]
-```
-```{r}
-#print(head(train_websites))
-```
-
-```{r}
-# Count the number of rows for each combination of https and who_is
-
-train_websites_count <- train_websites %>% 
-  filter(label == "good") 
-numberOfMaliciousURLs <- nrow(train_websites_count)
-  
-train_websites_count <- train_websites %>% 
-  filter(label == "good") %>% 
-  group_by(https) %>%
-  summarize(count = n())
-
-print(train_websites_count)
-print(interaction(train_websites_count$who_is))
-# Create a pie chart with a legend
-p1 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https))) +
-  geom_bar(width = 1, stat = "identity") +
-  coord_polar("y", start = 0, direction = -1) +
-  scale_fill_manual(values = c("red", "green"), labels=c("no","yes")) +
-  theme(legend.position = "bottom") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste("HTTPS in",numberOfMaliciousURLs,"benign URLs\n(yes/no for HTTPS)")) +
-  
-  guides(fill=guide_legend(title=""))
-
-# Count the number of rows for each combination of https and who_is
-
-train_websites_count <- train_websites %>% 
-  filter(label == "good") 
-numberOfBenignURLs <- nrow(train_websites_count)
-  
-train_websites_count <- train_websites %>% 
-  filter(label == "good") %>% 
-  group_by(who_is) %>%
-  summarize(count = n()) %>% 
-  arrange(desc(count))
-
-print(train_websites_count)
-print(interaction(train_websites_count$who_is))
-# Create a pie chart with a legend
-p2 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(who_is))) +
-  geom_bar(width = 1, stat = "identity") +
-  coord_polar("y", start = 0, direction = 1) +
-  scale_fill_manual(values = c("green", "red"), labels=c("complete","incomplete")) +
-  theme(legend.position = "bottom") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste("WHOIS in",numberOfBenignURLs,"benign URLs\n(complete/incomplete for WHOIS)")) +
-  
-  guides(fill=guide_legend(title=""))
-
-
-grid.arrange(p1, p2, ncol = 2)
-```
-
-```{r}
-# Count the number of rows for each combination of https and who_is
-
-train_websites_count <- train_websites %>% 
-  filter(label == "good") 
-numberOfBenignURLs <- nrow(train_websites_count)
-  
-train_websites_count <- train_websites %>% 
-  filter(label == "good") %>% 
-  group_by(https, who_is) %>%
-  summarize(count = n())
-
-# Create a pie chart with a legend
-ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https, who_is))) +
-  geom_bar(width = 1, stat = "identity") +
-  coord_polar("y", start = 0, direction = 1) +
-  scale_fill_manual(values = c("blue", "green", "red", "orange")) +
-  theme(legend.position = "bottom") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste("(HTTPS.WHOIS) pair combination in",numberOfBenignURLs,"benign URLs\n(yes/no for HTTPS and complete/incomplete for WHOIS)")) +
-  
-  guides(fill=guide_legend(title=""))
-```
-
-```{r}
-# Count the number of rows for each combination of https and who_is
-
-train_websites_count <- train_websites %>% 
-  filter(label == "bad") 
-numberOfMaliciousURLs <- nrow(train_websites_count)
-  
-train_websites_count <- train_websites %>% 
-  filter(label == "bad") %>% 
-  group_by(https) %>%
-  summarize(count = n())
-
-print(train_websites_count)
-print(interaction(train_websites_count$who_is))
-# Create a pie chart with a legend
-p1 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https))) +
-  geom_bar(width = 1, stat = "identity") +
-  coord_polar("y", start = 0, direction = 1) +
-  scale_fill_manual(values = c("red", "green"), labels=c("no","yes")) +
-  theme(legend.position = "bottom") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste("HTTPS in",numberOfMaliciousURLs,"malicious URLs\n(yes/no for HTTPS)")) +
-  
-  guides(fill=guide_legend(title=""))
-
-# Count the number of rows for each combination of https and who_is
-
-train_websites_count <- train_websites %>% 
-  filter(label == "bad") 
-numberOfMaliciousURLs <- nrow(train_websites_count)
-  
-train_websites_count <- train_websites %>% 
-  filter(label == "bad") %>% 
-  group_by(who_is) %>%
-  summarize(count = n()) %>% 
-  arrange(desc(count))
-
-print(train_websites_count)
-print(interaction(train_websites_count$who_is))
-# Create a pie chart with a legend
-p2 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(who_is))) +
-  geom_bar(width = 1, stat = "identity") +
-  coord_polar("y", start = 0, direction = -1) +
-  scale_fill_manual(values = c("green", "red"), labels=c("complete","incomplete")) +
-  theme(legend.position = "bottom") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste("WHOIS in",numberOfMaliciousURLs,"malicious URLs\n(complete/incomplete for WHOIS)")) +
-  
-  guides(fill=guide_legend(title=""))
-
-
-grid.arrange(p1, p2, ncol = 2)
-```
-
-```{r}
-# Count the number of rows for each combination of https and who_is
-
-train_websites_count <- train_websites %>% 
-  filter(label == "bad") 
-numberOfMaliciousURLs <- nrow(train_websites_count)
-  
-train_websites_count <- train_websites %>% 
-  filter(label == "bad") %>% 
-  group_by(https, who_is) %>%
-  summarize(count = n())
-
-# Create a pie chart with a legend
-ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https, who_is))) +
-  geom_bar(width = 1, stat = "identity") +
-  coord_polar("y", start = 0, direction = 1) +
-  scale_fill_manual(values = c("blue", "green", "red", "orange")) +
-  theme(legend.position = "bottom") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste("(HTTPS.WHOIS) pair combination in",numberOfMaliciousURLs,"malicious URLs\n(yes/no for HTTPS and complete/incomplete for WHOIS)")) +
-  
-  guides(fill=guide_legend(title=""))
-```
-
-
-```{r}
-ggplot(data = train_websites, aes(x = num_special, y = url_len, color = label)) +
-  geom_point() +
-  scale_color_manual(values = c("blue", "red"), 
-                     labels = c("benign", "malicious"),
-                     guide = guide_legend(title = "Label")) +
-  ggtitle("num_special vs url_len") +
-  xlab("num_special") +
-  ylab("url_len") +
-  theme(plot.title = element_text(hjust = 0.5))
-  #guides(color = guide_legend(title = "Label"))
-```
-
-
-```{r}
-ggplot(data = train_websites, aes(x = js_len, y = js_obf_len, color = label)) +
-  geom_point() +
-  scale_color_manual(values = c("blue", "red"), 
-                     labels = c("benign", "malicious"),
-                     guide = guide_legend(title = "Label")) +
-  ggtitle("js_len vs js_obf_len") +
-  xlab("js_len") +
-  ylab("js_obf_len") +
-  theme(plot.title = element_text(hjust = 0.5))
-  #guides(color = guide_legend(title = "Label"))
-```
-```{r}
-hist(train_websites$js_len, breaks = 100)
-hist(train_websites$js_obf_len, breaks = 100)
-```
-```{r}
-#print(train_websites$https)
-
-# Creating the Sequence
-gfg = seq(0,1, by=0.001)
- 
-# Case 3
-plot(gfg, dbeta(gfg, sum(train_websites$label=="bad")/1000,sum(train_websites$label=="good")/1000), xlab = "X",
-     ylab = "Beta Density", type = "l",
-     col = "Red")
-```
-
-```{r}
-options(dplyr.summarise.inform = FALSE)
-
-# Group the dataframe by geo_loc and count the number of rows for each country
-train_websites_count <- train_websites %>% 
-  group_by(geo_loc) %>%
-  summarize(count = n() ) %>%
-  top_n(10, count)
-
-# Count the number of benign and malicious URLs for each country
-train_websites_count_label <- train_websites %>% 
-  filter(geo_loc %in% train_websites_count$geo_loc) %>%
-  group_by(geo_loc, label) %>%
-  summarize(count = n())
-
-# Plot the bar chart
-ggplot(train_websites_count_label, aes(x = geo_loc, y = count, fill = label)) +
-  geom_bar(stat = "identity", position = "stack") +
-  scale_fill_manual(values = c("red", "blue"), 
-                    labels = c("malicious","benign")) +
-  xlab("Country") +
-  ylab("Number of URLs") +
-  ggtitle("Distribution of benign and malicious URLs of top 10 recorded countries") +
-  guides(fill = guide_legend(title = "Label")) +
-  theme(axis.text.x = element_text(angle = 30, hjust = 0.5, vjust = 0.5, size = 10, 
-                                  margin = margin(r = -20, unit = "pt"),
-                                  family = "serif", 
-                                  lineheight = 0.9, color = "black"))
-```
-
-```{r}
-print(train_websites_count)
-print(train_websites_count_label)
-
-```
-
-```{r}
-train_websites_top_10 <- train_websites %>% 
-  filter(geo_loc %in% train_websites_count$geo_loc)
-
-test_websites_top_10 <- test_websites %>% 
-  filter(geo_loc %in% train_websites_count$geo_loc)
-
-print(nrow(train_websites_top_10))
-
-print(nrow(test_websites_top_10))
-```
-
-```{r}
-
-
-train_websites_top_10$safety <- ifelse(train_websites_top_10$https == "yes" & 
-                                train_websites_top_10$who_is == "complete", 1,
-                                ifelse(train_websites_top_10$https == "no" 
-                                & train_websites_top_10$who_is == "complete", 2,
-                                ifelse(train_websites_top_10$https == "yes" & 
-                                train_websites_top_10$who_is == "incomplete", 3, 4)))
-
-test_websites_top_10$safety <- ifelse(test_websites_top_10$https == "yes" & 
-                                test_websites_top_10$who_is == "complete", 1,
-                                ifelse(test_websites_top_10$https == "no" 
-                                & test_websites_top_10$who_is == "complete", 2,
-                                ifelse(test_websites_top_10$https == "yes" & 
-                                test_websites_top_10$who_is == "incomplete", 3, 4)))
-
-keptColNames = c("label", "geo_loc", "js_len", "js_obf_len", "safety")
-train_websites_top_10 <- train_websites_top_10[, keptColNames]
-test_websites_top_10 <- test_websites_top_10[, keptColNames]
-print(train_websites_top_10)
-print(test_websites_top_10)
-```
-
-```{r}
-train_websites_top_10_bad <- train_websites_top_10 %>% 
-  filter(label =="bad")
-
-train_websites_top_10_good <- train_websites_top_10 %>% 
-  filter(label =="good")
-
-print(nrow(train_websites_top_10_bad))
-
-print(nrow(train_websites_top_10_good))
-```
-
-```{r}
-write.csv(train_websites_top_10, "websites/train_websites_top_10.csv")
-write.csv(test_websites_top_10, "websites/test_websites_top_10.csv")
-```
 
 ```{r}
 train_websites_top_10 <- read.csv("websites/train_websites_top_10.csv")
 test_websites_top_10 <- read.csv("websites/test_websites_top_10.csv")
+train_websites_top_10 <- train_websites_top_10 
+test_websites_top_10 <- test_websites_top_10
 ```
+
 
 # Separate model
 
+```{r}
+
+# Get unique country names
+countries <- unique(train_websites_top_10$geo_loc)
+
+# Get number of countries
+K <- length(countries)
+
+# Number of URLs per country, varying length of vector element
+N_list = list()
+
+
+# For each country, saving the number of URLs
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  N_list <- c(N_list, nrow(train_websites_country))
+}
+
+M_list = list()
+# For each country, saving the number of URLs
+for (country in countries) {
+  test_websites_country <- test_websites_top_10 %>%
+    filter(geo_loc == country)
+  M_list <- c(M_list, nrow(test_websites_country))
+}
+
+# The matrix of Javascript code, varying length of vector element
+js_len_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  js_len_list <- c(js_len_list, list(train_websites_country$js_len))
+}
+
+# The matrix of obfuscated Javascript code, varying length of vector element
+js_obf_len_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  js_obf_len_list <- c(js_obf_len_list, list(train_websites_country$js_obf_len))
+}
+
+# The matrix of safety level of the URL, varying length of vector element
+safety_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  safety_list <- c(safety_list, list(train_websites_country$safety))
+}
+
+# Testing data
+# The matrix of Javascript code, varying length of vector element
+js_len_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_10 %>%
+    filter(geo_loc == country)
+  js_len_test_list <- c(js_len_test_list, list(test_websites_country$js_len))
+}
+
+# The matrix of obfuscated Javascript code, varying length of vector element
+js_obf_len_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_10 %>%
+    filter(geo_loc == country)
+  js_obf_len_test_list <- c(js_obf_len_test_list, list(test_websites_country$js_obf_len))
+}
+
+# The matrix of safety level of the URL, varying length of vector element
+safety_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_10 %>%
+    filter(geo_loc == country)
+  safety_test_list <- c(safety_test_list, list(test_websites_country$safety))
+}
+
+# The matrix of label of the URL (malicious/benign), varying length of vector element
+label_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  label_list <- append(label_list, list(train_websites_country$label))
+}
+
+# first country: 
+
+
+stan_data <- list(
+  N = N_list[[1]],
+  M = M_list[[1]],
+  js_len = js_len_list[[1]],
+  js_obf_len = js_obf_len_list[[1]],
+  safety = safety_list[[1]],
+  js_len_pred = js_len_test_list[[1]],
+  js_obf_len_pred = js_obf_len_test_list[[1]],
+  safety_pred = safety_test_list[[1]],
+  label = label_list[[1]]
+)
+
+
+```
+```{r}
+print(N_list[[1]])
+print(length(js_len_list[[1]]))
+print(length(js_obf_len_list[[1]]))
+print(length(label_list[[1]]))
+```
+
+```{r}
+
+#print(label_list[[1]])
+file_separate <- file.path("model_separate.stan")
+model_separate <- cmdstan_model(file_separate)
+model_separate$compile(quiet = FALSE)
+result_separate <- model_separate$sample(data = stan_data, chains=4, show_messages=FALSE)
+result_separate$output(1)
+```
+
+# Hierarchical model
+
+```{r}
+
+# Get unique country names
+countries <- unique(train_websites_top_10$geo_loc)
+
+# Get number of countries
+K <- length(countries)
+
+# Number of URLs per country, varying length of vector element
+N = list()
+
+# For each country, saving the number of URLs
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  N <- append(N, nrow(train_websites_country))
+}
+
+# The matrix of Javascript code, varying length of vector element
+js_len = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  js_len <- c(js_len, list(train_websites_country$js_len))
+}
+
+# The matrix of obfuscated Javascript code, varying length of vector element
+js_obf_len = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  js_obf_len <- c(js_obf_len, list(train_websites_country$js_obf_len))
+}
+
+# The matrix of safety level of the URL, varying length of vector element
+safety = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  safety <- append(safety, list(train_websites_country$safety))
+}
+
+# The matrix of label of the URL (malicious/benign), varying length of vector element
+label = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_10 %>%
+    filter(geo_loc == country)
+  label <- append(label, list(train_websites_country$label))
+}
+
+stan_data <- list(
+  N = N,
+  js_len = js_len,
+  js_obf_len = js_obf_len,
+  safety = safety,
+  label = label
+)
+
+file_separate <- file.path("model_separate.stan")
+model_separate <- cmdstan_model(file_separate)
+model_separate$compile(quiet = FALSE)
+result_separate <- model_separate$sample(data = stan_data, chains=4, show_messages=FALSE)
+```
 
 ## Model description
 
