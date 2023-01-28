@@ -58,13 +58,13 @@ train_websites <- rbind(bad_sample_rows, good_sample_rows)
 bad_rows <- test_websites %>% filter(label == "bad")
 
 # Randomly select 300 rows from bad rows
-bad_sample_rows <- bad_rows %>% sample_n(40)
+bad_sample_rows <- bad_rows %>% sample_n(8000)
 
 # Filter the test_websites to keep only rows where label is "good"
 good_rows <- test_websites %>% filter(label == "good")
 
 # Randomly select 1200 rows from good_rows
-good_sample_rows <- good_rows %>% sample_n(160)
+good_sample_rows <- good_rows %>% sample_n(72000)
 
 # Concatenate bad_rows and sample_rows to create the new test_websites
 test_websites <- rbind(bad_sample_rows, good_sample_rows)
@@ -326,73 +326,95 @@ ggplot(train_websites_count_label, aes(x = geo_loc, y = count, fill = label)) +
 ```
 
 ```{r}
-train_websites_top_10 <- train_websites %>% 
+train_websites_top_5 <- train_websites %>% 
   filter(geo_loc %in% train_websites_count$geo_loc)
 
-test_websites_top_10 <- test_websites %>% 
+test_websites_top_5 <- test_websites %>% 
   filter(geo_loc %in% train_websites_count$geo_loc)
 
-print(nrow(train_websites_top_10))
+print(nrow(train_websites_top_5))
 
-print(nrow(test_websites_top_10))
+print(nrow(test_websites_top_5))
 ```
 
 ```{r}
+#train_websites_top_5$safety <- ifelse(train_websites_top_5$https == "yes" & 
+#                                train_websites_top_5$who_is == "complete", 1,
+#                                ifelse(train_websites_top_5$https == "no" 
+#                                & train_websites_top_5$who_is == "complete", 2,
+#                                ifelse(train_websites_top_5$https == "yes" & 
+#                                train_websites_top_5$who_is == "incomplete", 3, 4)))
+
+#test_websites_top_5$safety <- ifelse(test_websites_top_5$https == "yes" & 
+#                                test_websites_top_5$who_is == "complete", 1,
+#                                ifelse(test_websites_top_5$https == "no" 
+#                                & test_websites_top_5$who_is == "complete", 2,
+#                                ifelse(test_websites_top_5$https == "yes" & 
+#                                test_websites_top_5$who_is == "incomplete", 3, 4)))
+
+train_websites_top_5 <- rename(train_websites_top_5, whois = who_is)
+test_websites_top_5 <- rename(test_websites_top_5, whois = who_is)
+
+train_websites_top_5$https_bin <- ifelse(train_websites_top_5$https == "yes", 0, 1)
+
+train_websites_top_5$whois_bin <- ifelse(train_websites_top_5$whois == "complete", 0, 1)
+
+test_websites_top_5$https_bin <- ifelse(test_websites_top_5$https == "yes", 0, 1)
+
+test_websites_top_5$whois_bin <- ifelse(test_websites_top_5$whois == "complete", 0, 1)
 
 
-train_websites_top_10$safety <- ifelse(train_websites_top_10$https == "yes" & 
-                                train_websites_top_10$who_is == "complete", 1,
-                                ifelse(train_websites_top_10$https == "no" 
-                                & train_websites_top_10$who_is == "complete", 2,
-                                ifelse(train_websites_top_10$https == "yes" & 
-                                train_websites_top_10$who_is == "incomplete", 3, 4)))
-
-test_websites_top_10$safety <- ifelse(test_websites_top_10$https == "yes" & 
-                                test_websites_top_10$who_is == "complete", 1,
-                                ifelse(test_websites_top_10$https == "no" 
-                                & test_websites_top_10$who_is == "complete", 2,
-                                ifelse(test_websites_top_10$https == "yes" & 
-                                test_websites_top_10$who_is == "incomplete", 3, 4)))
-
-keptColNames = c("label", "geo_loc", "js_len", "js_obf_len", "safety")
-train_websites_top_10 <- train_websites_top_10[, keptColNames]
-test_websites_top_10 <- test_websites_top_10[, keptColNames]
-print(train_websites_top_10)
-print(test_websites_top_10)
+keptColNames = c("label", "geo_loc", "js_len", "js_obf_len", "https", "https_bin", "whois", "whois_bin")
+train_websites_top_5 <- train_websites_top_5[, keptColNames]
+test_websites_top_5 <- test_websites_top_5[, keptColNames]
+print(train_websites_top_5)
+print(test_websites_top_5)
 ```
 
 ```{r}
-train_websites_top_10$js <- ifelse(train_websites_top_10$js_len < 250 & train_websites_top_10$js_obf_len >= 100, 0, 
-                                   ifelse(train_websites_top_10$js_len < 250 & train_websites_top_10$js_obf_len < 100, 1, 2))
+#train_websites_top_5$js <- ifelse(train_websites_top_5$js_len < 250 & train_websites_top_5$js_obf_len >= 100, 0, 
+#                                   ifelse(train_websites_top_5$js_len < 250 & #train_websites_top_5$js_obf_len < 100, 1, 2))
+
+#test_websites_top_5$js <- ifelse(test_websites_top_5$js_len < 250 & test_websites_top_5$js_obf_len >= 100, 0, 
+#                                   ifelse(test_websites_top_5$js_len < 250 & #test_websites_top_5$js_obf_len < 100, 1, 2))
+
+
+train_websites_top_5$js_len_bin <- ifelse(train_websites_top_5$js_len < 250, 0, 1)
+
+train_websites_top_5$js_obf_len_bin <- ifelse(train_websites_top_5$js_obf_len < 100, 0, 1)
+
+test_websites_top_5$js_len_bin <- ifelse(test_websites_top_5$js_len < 250, 0, 1)
+
+test_websites_top_5$js_obf_len_bin <- ifelse(test_websites_top_5$js_obf_len < 100, 0, 1)
+
+print(train_websites_top_5)
+print(test_websites_top_5)
 
 ```
 
 ```{r}
-test_websites_top_10$js <- ifelse(test_websites_top_10$js_len < 250 & test_websites_top_10$js_obf_len >= 100, 0, 
-                                   ifelse(test_websites_top_10$js_len < 250 & test_websites_top_10$js_obf_len < 100, 1, 2))
-
+print(head(train_websites_top_5))
+print(head(test_websites_top_5))
 ```
 
 ```{r}
-print(head(train_websites_top_10))
-print(head(test_websites_top_10))
+#train_websites_top_5 <- train_websites_top_5 %>% mutate(label = ifelse(label == "good", 0, 1))
+#test_websites_top_5 <- test_websites_top_5 %>% mutate(label = ifelse(label == "good", 0, 1))
+
+train_websites_top_5$label_bin <- ifelse(train_websites_top_5$label == "good", 0, 1)
+
+test_websites_top_5$label_bin <- ifelse(test_websites_top_5$label == "good", 0, 1)
+
+print(head(test_websites_top_5))
 ```
 
 ```{r}
-train_websites_top_10 <- train_websites_top_10 %>% mutate(label = ifelse(label == "good", 0, 1))
-test_websites_top_10 <- test_websites_top_10 %>% mutate(label = ifelse(label == "good", 0, 1))
-
-#test_websites_top_10 <- test_websites_top_10[, c("label", "geo_loc", "js_len", "js_obf_len", "safety")]
-print(head(test_websites_top_10))
+write.csv(train_websites_top_5, "websites/train_websites_top_5.csv")
+write.csv(test_websites_top_5, "websites/test_websites_top_5.csv")
 ```
 
 ```{r}
-write.csv(train_websites_top_10, "websites/train_websites_top_10.csv")
-write.csv(test_websites_top_10, "websites/test_websites_top_10.csv")
-```
-
-```{r}
-train_websites_top_10 <- read.csv("websites/train_websites_top_10.csv")
-test_websites_top_10 <- read.csv("websites/test_websites_top_10.csv")
+train_websites_top_5 <- read.csv("websites/train_websites_top_5.csv")
+test_websites_top_5 <- read.csv("websites/test_websites_top_5.csv")
 ```
 
