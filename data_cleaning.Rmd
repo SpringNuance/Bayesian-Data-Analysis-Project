@@ -37,31 +37,37 @@ test_websites <- na.omit(test_websites)
 ```
 
 ```{r}
-# Filter the train_websites to keep only rows where label is "bad"
+# Filter the test_websites to keep only rows where label is "bad"
 bad_rows <- train_websites %>% filter(label == "bad")
 
-# Filter the train_websites to keep only rows where label is not "bad"
-good_rows <- train_websites %>% filter(label != "bad")
+# Randomly select 300 rows from bad rows
+bad_sample_rows <- bad_rows %>% sample_n(120)
 
-# Randomly select 300000 - nrow(bad_rows) rows from good_rows
-sample_rows <- good_rows %>% sample_n(140000 - nrow(bad_rows))
+# Filter the test_websites to keep only rows where label is "good"
+good_rows <- train_websites %>% filter(label == "good")
+
+# Randomly select 1200 rows from good_rows
+good_sample_rows <- good_rows %>% sample_n(480)
 
 # Concatenate bad_rows and sample_rows to create the new train_websites
-train_websites <- rbind(bad_rows, sample_rows)
+train_websites <- rbind(bad_sample_rows, good_sample_rows)
 ```
 
 ```{r}
 # Filter the test_websites to keep only rows where label is "bad"
 bad_rows <- test_websites %>% filter(label == "bad")
 
-# Filter the test_websites to keep only rows where label is not "bad"
-good_rows <- test_websites %>% filter(label != "bad")
+# Randomly select 300 rows from bad rows
+bad_sample_rows <- bad_rows %>% sample_n(40)
 
-# Randomly select 300000 - nrow(bad_rows) rows from good_rows
-sample_rows <- good_rows %>% sample_n(40000 - nrow(bad_rows))
+# Filter the test_websites to keep only rows where label is "good"
+good_rows <- test_websites %>% filter(label == "good")
+
+# Randomly select 1200 rows from good_rows
+good_sample_rows <- good_rows %>% sample_n(160)
 
 # Concatenate bad_rows and sample_rows to create the new test_websites
-test_websites <- rbind(bad_rows, sample_rows)
+test_websites <- rbind(bad_sample_rows, good_sample_rows)
 ```
 
 ```{r}
@@ -257,22 +263,19 @@ ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https, wh
 ```
 
 ```{r}
-ggplot(data = train_websites, aes(x = num_special, y = url_len, color = label)) +
+ggplot(data = train_websites %>% filter(label == "good") , aes(x = js_len, y = js_obf_len)) +
   geom_point() +
-  scale_color_manual(values = c("blue", "red"), 
-                     labels = c("benign", "malicious"),
-                     guide = guide_legend(title = "Label")) +
   ggtitle("num_special vs url_len") +
-  xlab("num_special") +
-  ylab("url_len") +
+  xlab("js_len") +
+  ylab("js_obf_len") +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ```{r}
 ggplot(data = train_websites, aes(x = js_len, y = js_obf_len, color = label)) +
   geom_point() +
-  scale_color_manual(values = c("blue", "red"), 
-                     labels = c("benign", "malicious"),
+  scale_color_manual(values = c("red", "blue"), 
+                     labels = c("malicious", "benign"),
                      guide = guide_legend(title = "Label")) +
   ggtitle("js_len vs js_obf_len") +
   xlab("js_len") +
@@ -285,6 +288,9 @@ ggplot(data = train_websites, aes(x = js_len, y = js_obf_len, color = label)) +
   #guides(color = guide_legend(title = "Label"))
 ```
 
+
+
+
 ```{r}
 hist(train_websites$js_len, main = "JS length histogram of the recorded URLs", breaks = 100)
 hist(train_websites$js_obf_len, main ="Obfuscated JS length histogram of the recorded URLs", breaks = 100)
@@ -295,7 +301,8 @@ hist(train_websites$js_obf_len, main ="Obfuscated JS length histogram of the rec
 train_websites_count <- train_websites %>% 
   group_by(geo_loc) %>%
   summarize(count = n() ) %>%
-  top_n(10, count)
+  top_n(5, count) %>%
+  slice_tail(n=5)
 
 # Count the number of benign and malicious URLs for each country
 train_websites_count_label <- train_websites %>% 
@@ -310,7 +317,7 @@ ggplot(train_websites_count_label, aes(x = geo_loc, y = count, fill = label)) +
                     labels = c("malicious","benign")) +
   xlab("Country") +
   ylab("Number of URLs") +
-  ggtitle("Distribution of benign and malicious URLs of top 10 recorded countries") +
+  ggtitle("Distribution of benign and malicious URLs of top 5 recorded countries") +
   guides(fill = guide_legend(title = "Label")) +
   theme(axis.text.x = element_text(angle = 30, hjust = 0.5, vjust = 0.5, size = 10, 
                                   margin = margin(r = -20, unit = "pt"),
@@ -355,6 +362,23 @@ print(test_websites_top_10)
 ```
 
 ```{r}
+train_websites_top_10$js <- ifelse(train_websites_top_10$js_len < 250 & train_websites_top_10$js_obf_len >= 100, 0, 
+                                   ifelse(train_websites_top_10$js_len < 250 & train_websites_top_10$js_obf_len < 100, 1, 2))
+
+```
+
+```{r}
+test_websites_top_10$js <- ifelse(test_websites_top_10$js_len < 250 & test_websites_top_10$js_obf_len >= 100, 0, 
+                                   ifelse(test_websites_top_10$js_len < 250 & test_websites_top_10$js_obf_len < 100, 1, 2))
+
+```
+
+```{r}
+print(head(train_websites_top_10))
+print(head(test_websites_top_10))
+```
+
+```{r}
 train_websites_top_10 <- train_websites_top_10 %>% mutate(label = ifelse(label == "good", 0, 1))
 test_websites_top_10 <- test_websites_top_10 %>% mutate(label = ifelse(label == "good", 0, 1))
 
@@ -370,26 +394,5 @@ write.csv(test_websites_top_10, "websites/test_websites_top_10.csv")
 ```{r}
 train_websites_top_10 <- read.csv("websites/train_websites_top_10.csv")
 test_websites_top_10 <- read.csv("websites/test_websites_top_10.csv")
-```
-
-```{r}
-# Get unique country names
-countries <- unique(train_websites_top_10$geo_loc)
-
-# For each country, filter train_websites_top_10 and write to separate csv
-for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
-    filter(geo_loc == country) %>%
-    select(-geo_loc)
-  write.csv(train_websites_country, file = paste0("websites/separate/train_website_", country, ".csv"))
-}
-
-# Create new dataframe by removing geo_loc column
-train_websites_combined <- train_websites_top_10 %>%
-  select(-geo_loc)
-
-# Write combined dataframe to csv
-write.csv(train_websites_combined, file = "websites/hierarchical/train_website_combined.csv")
-
 ```
 

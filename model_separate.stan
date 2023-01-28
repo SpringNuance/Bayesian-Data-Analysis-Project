@@ -1,65 +1,81 @@
 data {
   int<lower=1> N; // Number of URLs of a country (training)
   int<lower=1> M; // Number of URLs of a country (testing)
-  // The features
-  array[N] real js_len;
-  array[N] real js_obf_len;
-  // safety is categorical, following the categorical distribution
-  array[N] int<lower=0,upper=4> safety;
+  array[N] int<lower=0,upper=1> js_len;
+  array[N] int<lower=0,upper=1> js_obf_len;
+  array[N] int<lower=0,upper=1> https;
+  array[N] int<lower=0,upper=1> whois;
 
-  // predicting features
-  array[M] real js_len_pred;
-  array[M] real js_obf_len_pred;
-  array[M] int<lower=0,upper=4> safety_pred;
+  // The testing predicting features
+  array[M] int<lower=0,upper=1> js_len_pred;
+  array[M] int<lower=0,upper=1> js_obf_len_pred;
+  array[M] int<lower=0,upper=1> https_pred;
+  array[M] int<lower=0,upper=1> whois_pred;
   
   // label for each URL: benign(0) or malicious(1)
   array[N] int<lower=0,upper=1> label; 
 }
 
 parameters {
-  // simplex requires that the sum of its vectors elements are equal to 1. 
-  simplex[4] probs;
-  // degree of freedom for the inverse chi square
-  real nu_js_len;
-  real nu_js_obf_len;
-  real js_len_coeff;
-  real js_obf_len_coeff;
-  real safety_coeff;
-  real intercept;
+  real<lower=0, upper=1> theta_js_len;
+  real<lower=0, upper=1> theta_js_obf_len;
+  real<lower=0, upper=1> theta_https;
+  real<lower=0, upper=1> theta_whois;
+  real js_len_coeff; // Slope coefficient for js
+  real js_obf_len_coeff; // Slope coefficient for js
+  real https_coeff; // Slope coefficient for js
+  real whois_coeff; // Slope coefficient for js
+  real intercept; // Intercept coefficient for js
 }
 
 model {
-    // prior for safety
-    for (i in 1:4){
-      probs[i] ~ normal(0.5, 0.2);
-    }
-    // likelihood for safety
-    for (i in 1:N) {
-      safety[i] ~ categorical(probs);
-    }
-    // prior for js_len
-    nu_js_len ~ normal(10, 5);
-    // likelihood for js_len
-    js_len ~ inv_chi_square(nu_js_len);
-    // prior for js_obf_len
-    nu_js_obf_len ~ normal(15, 7);
-    // likelihood for js_obf_len
-    js_obf_len ~ inv_chi_square(nu_js_obf_len);
-    
-    js_len_coeff ~ normal(0,10);
-    js_obf_len_coeff ~ normal(0,10);
-    safety_coeff ~ normal(0, 10);
+    theta_js_len ~ beta(1,1);
+    theta_js_obf_len ~ beta(1,1);
+    theta_https ~ beta(1,1);
+    theta_whois ~ beta(1,1);
+    // likelihood for safety and js
+    js_len ~ bernoulli(theta_js_len);
+    js_obf_len ~ bernoulli(theta_js_obf_len);
+    https ~ bernoulli(theta_https);
+    whois ~ bernoulli(theta_whois);
+    // The distribution of the mean and std for the coefficients
+    // mu_js ~ gamma(3,1);
+    // mu_safety ~ gamma(3,1);
+    //mu_js ~ normal(0,50);
+    //mu_safety ~ normal(0,50);
+    //mu_intercept ~ normal(0,50);
+    //sigma_js ~ gamma(1,1);
+    //sigma_safety ~ gamma(1,1);
+    //sigma_js ~ normal(0,20);
+    //sigma_safety ~ normal(0,20);
+    //sigma_intercept ~ normal(0,20);
+    // weakly informative priors for the coefficients and intercept
+    //js_coeff ~ normal(mu_js, sigma_js);
+    //safety_coeff ~ normal(mu_safety, sigma_safety);
+    //intercept ~ normal(mu_intercept, sigma_intercept);
+    //js_coeff ~ normal(mu_js, sigma_js);
+    //safety_coeff ~ normal(mu_safety, sigma_safety);
+    //intercept ~ normal(mu_intercept, sigma_intercept);
+    js_len_coeff ~ normal(0, 10);
+    js_obf_len_coeff ~ normal(0, 10);
+    https_coeff ~ normal(0, 10);
+    whois_coeff ~ normal(0,10);
     intercept ~ normal(0, 10);
- 
-    // Modelling of the label based on bernoulli logistic regression by the multiple linear regressions of the variable
+    // Modelling of the label based on bernoulli logistic regression by multiple variable linear regression 
     for (i in 1:N){
-      label[i] ~ bernoulli(inv_logit(intercept + safety_coeff * safety[i] + js_len_coeff * js_len[i] + js_obf_len_coeff * js_obf_len[i]));
+      label[i] ~ bernoulli(inv_logit(intercept + https_coeff * https[i] + whois_coeff * whois[i] + js_len_coeff * js_len[i] + js_obf_len_coeff * js_obf_len[i]));
     }
-    
 }
 
-//generated quantities {
-//    vector[N] y_pred;
-//    for (i in 1:N) {
-//        y_pred[i] = normal_rng(alpha * x_pred[i] + beta, 1);
-//    }
+generated quantities {
+    vector[N] label_train_pred;
+    vector[M] label_test_pred;
+    // Predictions for the training data
+    for (i in 1:N){
+      label_train_pred[i] = bernoulli_rng(inv_logit(intercept + https_coeff * (https[i] + 1) + whois_coeff * (whois[i] + 1) + js_len_coeff * (js_len[i] + 1) + js_obf_len_coeff * (js_obf_len[i] + 1)));
+    }
+    // Predictions for the testing data
+    for (i in 1:M){
+      label_test_pred[i] = bernoulli_rng(inv_logit(intercept + https_coeff * (https_pred[i] + 1) + whois_coeff * (whois_pred[i] + 1) + js_len_coeff * (js_len_pred[i] + 1) + js_obf_len_coeff * (js_obf_len_pred[i] + 1)));
+    }
+}

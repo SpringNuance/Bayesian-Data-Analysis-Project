@@ -57,15 +57,21 @@ model {
     //mu_js ~ normal(0,50);
     //mu_safety ~ normal(0,50);
     //mu_intercept ~ normal(0,50);
-    // sigma_js ~ gamma(1,1);
-    // sigma_safety ~ gamma(1,1);
+    //sigma_js ~ gamma(1,1);
+    //sigma_safety ~ gamma(1,1);
     //sigma_js ~ normal(0,20);
     //sigma_safety ~ normal(0,20);
     //sigma_intercept ~ normal(0,20);
     // weakly informative priors for the coefficients and intercept
+    //js_coeff ~ normal(mu_js, sigma_js);
+    //safety_coeff ~ normal(mu_safety, sigma_safety);
+    //intercept ~ normal(mu_intercept, sigma_intercept);
     js_coeff ~ normal(mu_js, sigma_js);
     safety_coeff ~ normal(mu_safety, sigma_safety);
     intercept ~ normal(mu_intercept, sigma_intercept);
+    //js_coeff ~ normal(0, 10);
+    //safety_coeff ~ normal(0, 10);
+    //intercept ~ normal(0, 10);
     // Modelling of the label based on bernoulli logistic regression by multiple variable linear regression 
     for (i in 1:N){
       label[i] ~ bernoulli(inv_logit(intercept + safety_coeff * safety[i] + js_coeff * js[i]));

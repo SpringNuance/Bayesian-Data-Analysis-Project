@@ -10,6 +10,46 @@ output:
 bibliography: bibliography.bib
 ---
 
+# Introduction
+
+## Central problem
+Web Security is a challenging task amidst ever rising threats on the Internet. With billions of websites active on Internet, and hackers evolving newer techniques to trap web users, machine learning offers promising techniques to detect malicious websites. The dataset described in this manuscript is meant for such machine learning based analysis of malicious and benign webpages. The data has been collected from Internet using a specialized focused web crawler named MalCrawler [1]. The dataset comprises of various extracted attributes, and also raw webpage content including JavaScript code. It supports both supervised and unsupervised learning. For supervised learning, class labels for malicious and benign webpages have been added to the dataset using the Google Safe Browsing API.1 The most relevant attributes within the scope have already been extracted and included in this dataset. However, the raw web content, including JavaScript code included in this dataset supports further attribute extraction, if so desired. Also, this raw content and code can be used as unstructured data input for text-based analytics. This dataset consists of data from approximately 1.5 million webpages, which makes it suitable for deep learning algorithms. This article also provides code snippets used for data extraction and its analysis.
+
+## Motivation
+
+
+## Main modeling idea
+
+
+# Dataset 
+
+## Data Description
+
+The dataset contains extracted attributes from websites that can be used for Classification of webpages as malicious or benign. The dataset also includes raw page content including JavaScript code that can be used as unstructured data in Deep Learning or for extracting further attributes. The data has been collected by crawling the Internet using MalCrawler [1]. The labels have been verified using the Google Safe Browsing API [2]. Attributes have been selected based on their relevance [3]. The details of dataset attributes is as given below: 
+'url'         - The URL of the webpage.
+'ip_add'      - IP Address of the webpage.
+'geo_loc'     - The geographic location where the webpage is hosted.
+'url_len'     - The length of URL.
+'js_len'      - Length of JavaScript code on the webpage.
+'js_obf_len - Length of obfuscated JavaScript code.
+'tld'         - The Top Level Domain of the webpage.
+'who_is'      - Whether the WHO IS domain information is compete or not.
+'https'         - Whether the site uses https or http.
+'content'     - The raw webpage content including JavaScript code.
+'label'          - The class label for benign or malicious webpage. 
+ 
+Python code for extraction of the above listed dataset attributes is attached.
+The Visualisation of this dataset and it python code is also attached. This visualisation can be seen online on Kaggle
+
+## Data source and analysis difference
+Kaggle: https://www.kaggle.com/datasets/aksingh2411/dataset-of-malicious-and-benign-webpages
+Data source: https://data.mendeley.com/datasets/gdx3pkwp47/2
+
+
+
+
+# Feature selection and transformation
+
 ```{r include=FALSE}
 library(rstan)
 library(cmdstanr)
@@ -24,58 +64,24 @@ library(sentimentr)
 library(stringr)
 library(gridExtra)
 library(MASS)
-#library(fitdistrplus)
-
+options(dplyr.summarise.inform = FALSE)
 ```
-
-# Introduction
-Web Security is a challenging task amidst ever rising threats on the Internet. With billions of websites active on Internet, and hackers evolving newer techniques to trap web users, machine learning offers promising techniques to detect malicious websites. The dataset described in this manuscript is meant for such machine learning based analysis of malicious and benign webpages. The data has been collected from Internet using a specialized focused web crawler named MalCrawler [1]. The dataset comprises of various extracted attributes, and also raw webpage content including JavaScript code. It supports both supervised and unsupervised learning. For supervised learning, class labels for malicious and benign webpages have been added to the dataset using the Google Safe Browsing API.1 The most relevant attributes within the scope have already been extracted and included in this dataset. However, the raw web content, including JavaScript code included in this dataset supports further attribute extraction, if so desired. Also, this raw content and code can be used as unstructured data input for text-based analytics. This dataset consists of data from approximately 1.5 million webpages, which makes it suitable for deep learning algorithms. This article also provides code snippets used for data extraction and its analysis.
-
-
-## Problem Description
-
-
-## Data Description
-
-The dataset contains extracted attributes from websites that can be used for Classification of webpages as malicious or benign. The dataset also includes raw page content including JavaScript code that can be used as unstructured data in Deep Learning or for extracting further attributes. The data has been collected by crawling the Internet using MalCrawler [1]. The labels have been verified using the Google Safe Browsing API [2]. Attributes have been selected based on their relevance [3]. The details of dataset attributes is as given below: 
-'url'             - The URL of the webpage.
-'ip_add'      - IP Address of the webpage.
-'geo_loc'     - The geographic location where the webpage is hosted.
-'url_len'      - The length of URL.
-'js_len'        - Length of JavaScript code on the webpage.
-'js_obf_len - Length of obfuscated JavaScript code.
-'tld'             - The Top Level Domain of the webpage.
-'who_is'      - Whether the WHO IS domain information is compete or not.
-'https'         - Whether the site uses https or http.
-'content'     - The raw webpage content including JavaScript code.
-'label'          - The class label for benign or malicious webpage. 
- 
-Python code for extraction of the above listed dataset attributes is attached.
-The Visualisation of this dataset and it python code is also attached. This visualisation can be seen online on Kaggle
-
-Kaggle: https://www.kaggle.com/datasets/aksingh2411/dataset-of-malicious-and-benign-webpages
-Data source: https://data.mendeley.com/datasets/gdx3pkwp47/2
-
-## Main modeling idea
-
-# Data cleaning 
-
 
 
 ```{r}
-train_websites_top_10 <- read.csv("websites/train_websites_top_10.csv")
-test_websites_top_10 <- read.csv("websites/test_websites_top_10.csv")
-train_websites_top_10 <- train_websites_top_10 
-test_websites_top_10 <- test_websites_top_10
+train_websites_top_5 <- read.csv("websites/train_websites_top_5.csv")
+test_websites_top_5 <- read.csv("websites/test_websites_top_5.csv")
+print(nrow(train_websites_top_5))
+print(nrow(test_websites_top_5))
+head(train_websites_top_5)
 ```
-
 
 # Separate model
 
-```{r}
+```{r, echo=FALSE}
 
 # Get unique country names
-countries <- unique(train_websites_top_10$geo_loc)
+countries <- unique(train_websites_top_5$geo_loc)
 
 # Get number of countries
 K <- length(countries)
@@ -86,7 +92,7 @@ N_list = list()
 
 # For each country, saving the number of URLs
 for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
+  train_websites_country <- train_websites_top_5 %>%
     filter(geo_loc == country)
   N_list <- c(N_list, nrow(train_websites_country))
 }
@@ -94,56 +100,105 @@ for (country in countries) {
 M_list = list()
 # For each country, saving the number of URLs
 for (country in countries) {
-  test_websites_country <- test_websites_top_10 %>%
+  test_websites_country <- test_websites_top_5 %>%
     filter(geo_loc == country)
   M_list <- c(M_list, nrow(test_websites_country))
 }
 
 # The matrix of Javascript code, varying length of vector element
-js_len_list = list()
+js_list = list()
 for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
+  train_websites_country <- train_websites_top_5 %>%
     filter(geo_loc == country)
-  js_len_list <- c(js_len_list, list(train_websites_country$js_len))
+  js_list <- c(js_list, list(train_websites_country$js))
 }
 
-# The matrix of obfuscated Javascript code, varying length of vector element
+# The matrix of Javascript code, varying length of vector element
+js_len_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_5 %>%
+    filter(geo_loc == country)
+  js_len_list <- c(js_len_list, list(train_websites_country$js_len_bin))
+}
+
+# The matrix of Javascript code, varying length of vector element
 js_obf_len_list = list()
 for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
+  train_websites_country <- train_websites_top_5 %>%
     filter(geo_loc == country)
-  js_obf_len_list <- c(js_obf_len_list, list(train_websites_country$js_obf_len))
+  js_obf_len_list <- c(js_obf_len_list, list(train_websites_country$js_obf_len_bin))
 }
 
 # The matrix of safety level of the URL, varying length of vector element
 safety_list = list()
 for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
+  train_websites_country <- train_websites_top_5 %>%
     filter(geo_loc == country)
   safety_list <- c(safety_list, list(train_websites_country$safety))
 }
 
+# The matrix of safety level of the URL, varying length of vector element
+https_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_5 %>%
+    filter(geo_loc == country)
+  https_list <- c(https_list, list(train_websites_country$https_bin))
+}
+
+# The matrix of safety level of the URL, varying length of vector element
+whois_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_5 %>%
+    filter(geo_loc == country)
+  whois_list <- c(whois_list, list(train_websites_country$whois_bin))
+}
+
+
 # Testing data
+# The matrix of Javascript code, varying length of vector element
+js_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_5 %>%
+    filter(geo_loc == country)
+  js_test_list <- c(js_test_list, list(test_websites_country$js))
+}
+
 # The matrix of Javascript code, varying length of vector element
 js_len_test_list = list()
 for (country in countries) {
-  test_websites_country <- test_websites_top_10 %>%
+  test_websites_country <- test_websites_top_5 %>%
     filter(geo_loc == country)
-  js_len_test_list <- c(js_len_test_list, list(test_websites_country$js_len))
+  js_len_test_list <- c(js_len_test_list, list(test_websites_country$js_len_bin))
 }
 
-# The matrix of obfuscated Javascript code, varying length of vector element
+# The matrix of Javascript code, varying length of vector element
 js_obf_len_test_list = list()
 for (country in countries) {
-  test_websites_country <- test_websites_top_10 %>%
+  test_websites_country <- test_websites_top_5 %>%
     filter(geo_loc == country)
-  js_obf_len_test_list <- c(js_obf_len_test_list, list(test_websites_country$js_obf_len))
+  js_obf_len_test_list <- c(js_obf_len_test_list, list(test_websites_country$js_obf_len_bin))
+}
+
+# The matrix of safety level of the URL, varying length of vector element
+https_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_5 %>%
+    filter(geo_loc == country)
+  https_test_list <- c(https_test_list, list(test_websites_country$https_bin))
+}
+
+# The matrix of safety level of the URL, varying length of vector element
+whois_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_5 %>%
+    filter(geo_loc == country)
+  whois_test_list <- c(whois_test_list, list(test_websites_country$whois_bin))
 }
 
 # The matrix of safety level of the URL, varying length of vector element
 safety_test_list = list()
 for (country in countries) {
-  test_websites_country <- test_websites_top_10 %>%
+  test_websites_country <- test_websites_top_5 %>%
     filter(geo_loc == country)
   safety_test_list <- c(safety_test_list, list(test_websites_country$safety))
 }
@@ -151,121 +206,142 @@ for (country in countries) {
 # The matrix of label of the URL (malicious/benign), varying length of vector element
 label_list = list()
 for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
+  train_websites_country <- train_websites_top_5 %>%
     filter(geo_loc == country)
-  label_list <- append(label_list, list(train_websites_country$label))
-}
-
-# first country: 
-
-
-stan_data <- list(
-  N = N_list[[1]],
-  M = M_list[[1]],
-  js_len = js_len_list[[1]],
-  js_obf_len = js_obf_len_list[[1]],
-  safety = safety_list[[1]],
-  js_len_pred = js_len_test_list[[1]],
-  js_obf_len_pred = js_obf_len_test_list[[1]],
-  safety_pred = safety_test_list[[1]],
-  label = label_list[[1]]
-)
-
-
-```
-```{r}
-print(N_list[[1]])
-print(length(js_len_list[[1]]))
-print(length(js_obf_len_list[[1]]))
-print(length(label_list[[1]]))
-```
-
-```{r}
-
-#print(label_list[[1]])
-file_separate <- file.path("model_separate.stan")
-model_separate <- cmdstan_model(file_separate)
-model_separate$compile(quiet = FALSE)
-result_separate <- model_separate$sample(data = stan_data, chains=4, show_messages=FALSE)
-result_separate$output(1)
-```
-
-# Hierarchical model
-
-```{r}
-
-# Get unique country names
-countries <- unique(train_websites_top_10$geo_loc)
-
-# Get number of countries
-K <- length(countries)
-
-# Number of URLs per country, varying length of vector element
-N = list()
-
-# For each country, saving the number of URLs
-for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
-    filter(geo_loc == country)
-  N <- append(N, nrow(train_websites_country))
-}
-
-# The matrix of Javascript code, varying length of vector element
-js_len = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
-    filter(geo_loc == country)
-  js_len <- c(js_len, list(train_websites_country$js_len))
-}
-
-# The matrix of obfuscated Javascript code, varying length of vector element
-js_obf_len = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
-    filter(geo_loc == country)
-  js_obf_len <- c(js_obf_len, list(train_websites_country$js_obf_len))
-}
-
-# The matrix of safety level of the URL, varying length of vector element
-safety = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
-    filter(geo_loc == country)
-  safety <- append(safety, list(train_websites_country$safety))
+  label_list <- append(label_list, list(train_websites_country$label_bin))
 }
 
 # The matrix of label of the URL (malicious/benign), varying length of vector element
-label = list()
+label_test_list = list()
 for (country in countries) {
-  train_websites_country <- train_websites_top_10 %>%
+  test_websites_country <- test_websites_top_5 %>%
     filter(geo_loc == country)
-  label <- append(label, list(train_websites_country$label))
+  label_test_list <- append(label_test_list, list(test_websites_country$label_bin))
 }
+```
 
-stan_data <- list(
-  N = N,
-  js_len = js_len,
-  js_obf_len = js_obf_len,
-  safety = safety,
-  label = label
-)
-
+```{r, echo=FALSE}
+# Compiling the separate Stan model
 file_separate <- file.path("model_separate.stan")
 model_separate <- cmdstan_model(file_separate)
 model_separate$compile(quiet = FALSE)
-result_separate <- model_separate$sample(data = stan_data, chains=4, show_messages=FALSE)
 ```
+
+```{r}
+separate_sampling <- list()
+for (i in 1:1){
+  #stan_data <- list(
+  #  N = N_list[[i]],
+  #  M = M_list[[i]],
+  #  js = js_list[[i]],
+  #  safety = safety_list[[i]],
+  #  js_pred = js_test_list[[i]],
+  #  safety_pred = safety_test_list[[i]],
+  #  label = label_list[[i]]
+  #)
+  stan_data <- list(
+    N = N_list[[i]],
+    M = M_list[[i]],
+    js_len = js_len_list[[i]],
+    js_obf_len = js_obf_len_list[[i]],
+    https = https_list[[i]],
+    whois = whois_list[[i]],
+    js_len_pred = js_len_test_list[[i]],
+    js_obf_len_pred = js_obf_len_test_list[[i]],
+    https_pred = https_test_list[[i]],
+    whois_pred = whois_test_list[[i]],
+
+    label = label_list[[i]]
+  )
+  result <- model_separate$sample(data = stan_data, chains=1, iter_warmup = 1000, iter_sampling = 1000, show_messages=FALSE)
+  #result$diagnostic_summary()
+  separate_sampling[[countries[i]]] <- result
+}
+
+```
+
+```{r}
+# Set up the plotting grid
+par(mfrow = c(3,5))
+
+row_labels <- c("intercept", "safety coefficient","js coefficient")
+row_names <- c("intercept", "safety_coeff","js_coeff")
+
+# Loop through the countries
+for(i in 1:3){
+    for (j in 1:5){
+      # Create the subplot
+      hist(separate_sampling[[countries[j]]]$draws(row_names[i]), main = countries[j], xlab=row_labels[i])
+      # Add the country name to the top of the column
+      mtext(countries[j], side = 3, line = 0.5, outer = TRUE)
+    }
+}
+
+```
+
+```{r, echo=FALSE}
+plotConvergence <- function (draws, paramName){
+  chain1 <- as.vector(draws[1:1000, 1])
+  chain2 <- as.vector(draws[1001:2000, 1])
+  chain3 <- as.vector(draws[2001:3000, 1])
+  chain4 <- as.vector(draws[3001:4000, 1])
+  iters = length(chain1)
+  indices <- 1:iters
+  data <- data.frame(indices, chain1, chain2, 
+                              chain3, chain4)
+  
+  ggplot(data, aes(x=indices)) +
+    ggtitle(paste("Separate model - USA country\nFour MCMC of the",paramName,"\n",iters,"iterations, no warm-up")) +
+    xlab("iteration") + 
+    ylab(paramName) +
+    theme(plot.title = element_text(hjust = 0.5), legend.position = "right") +
+    geom_line(aes(y = chain1, color = "chain1")) + 
+    geom_line(aes(y = chain2, color = "chain2")) +
+    geom_line(aes(y = chain3, color = "chain3")) + 
+    geom_line(aes(y = chain4, color = "chain4")) +
+    scale_color_manual(name = "MCMC chains", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black")) 
+}
+
+intercept_draws <- separate_sampling[[countries[1]]]$draws("intercept", format = "matrix")
+plotConvergence(intercept_draws, "intercept")
+
+safety_draws <- separate_sampling[[countries[1]]]$draws("safety_coeff", format = "matrix")
+plotConvergence(safety_draws, "safety coefficient")
+
+js_draws <- separate_sampling[[countries[1]]]$draws("js_coeff", format = "matrix")
+plotConvergence(js_draws, "js coefficient")
+```
+
+
+```{r}
+draws <- result_separate$draws("intercept", format = "matrix")
+confusion_matrix <- table(as.vector(draws[4000,]), label_test_list[[1]])
+confusion_matrix
+
+```
+# Hierarchical model
+
+
 
 ## Model description
 
+## Prior choice and justifications
+## Stan code and running options
 
-## Stan code and running option
+The separate model:
 
 
 ## Convergence diagnostics
 
 
+
 ## Posterior predictive check
+
+```{r}
+draws <- result_separate$draws("intercept", format = "matrix")
+confusion_matrix <- table(as.vector(draws[4000,]), label_test_list[[1]])
+confusion_matrix
+```
 
 
 ## Predictive performance assessment
@@ -284,7 +360,7 @@ result_separate <- model_separate$sample(data = stan_data, chains=4, show_messag
 ## Convergence diagnostics
 
 
-## Posterior predictive check
+## Posterior predictive checks
 
 
 ## Predictive performance assessment
@@ -293,14 +369,17 @@ result_separate <- model_separate$sample(data = stan_data, chains=4, show_messag
 
 
 
-# Model comparision
+# Model comparison
 
 
 
-# Disscussion
+# Discussion
 
+## Existing issues
 
-# Conclusion of the results
+## Potential improvements
+
+# Conclusion
 
 
 
