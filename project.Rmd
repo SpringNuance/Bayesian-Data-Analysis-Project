@@ -1,6 +1,6 @@
 ---
 title: "BDA Project: Malicious and Benign Website URL detections"
-author: "Nguyen Xuan Binh, Duong Le"
+author: "Nguyen Xuan Binh"
 date: "January 2023"
 output: 
   pdf_document:
@@ -46,6 +46,14 @@ Kaggle: https://www.kaggle.com/datasets/aksingh2411/dataset-of-malicious-and-ben
 Data source: https://data.mendeley.com/datasets/gdx3pkwp47/2
 https://www.researchgate.net/publication/347936136_Malicious_and_Benign_Webpages_Dataset
 
+
+
+
+# Data cleaning
+
+# Feature selection and transformation
+
+
 ```{r, include=FALSE}
 library(rstan)
 library(cmdstanr)
@@ -69,20 +77,23 @@ library(purrr)
 options(dplyr.summarise.inform = FALSE)
 ```
 
-
-```{r}
-train_websites_top_5 <- read.csv("websites/train_websites_top_5.csv")
-test_websites_top_5 <- read.csv("websites/test_websites_top_5.csv")
-cat("Number of training data:",nrow(train_websites_top_5))
-cat("\nNumber of testing data:",nrow(test_websites_top_5))
-head(train_websites_top_5)
+```{r setup, include = FALSE}
+#knitr::opts_chunk$set(eval = TRUE)
+#knitr::opts_chunk$set(eval = FALSE)
 ```
 
-
-# Feature selection and transformation
 ```{r}
 train_websites <- read.csv("websites/train_websites.csv")
 test_websites <- read.csv("websites/test_websites.csv")
+train_websites_top_3 <- read.csv("websites/train_websites_top_3.csv")
+test_websites_top_3 <- read.csv("websites/test_websites_top_3.csv")
+```
+
+
+```{r}
+cat("Number of training data:",nrow(train_websites_top_3))
+cat("\nNumber of testing data:",nrow(test_websites_top_3))
+head(train_websites_top_3)
 ```
 
 ```{r,echo=FALSE}
@@ -251,7 +262,7 @@ ggplot(data = train_websites, aes(x = js_len, y = js_obf_len, color = label)) +
 
 
 ```{r}
-# Set up the plotting grid
+# Set up the plotting grid for the coefficients
 par(mfrow = c(2,1))
 
 hist(train_websites$js_len, main = "JS length histogram of the recorded URLs", xlab = "Javascript length", breaks = 100)
@@ -263,8 +274,8 @@ hist(train_websites$js_obf_len, main ="Obfuscated JS length histogram of the rec
 train_websites_count <- train_websites %>% 
   group_by(geo_loc) %>%
   summarize(count = n() ) %>%
-  top_n(5, count) %>%
-  slice_tail(n=5)
+  top_n(3, count) %>%
+  slice_tail(n=3)
 
 # Count the number of benign and malicious URLs for each country
 train_websites_count_label <- train_websites %>% 
@@ -279,12 +290,157 @@ ggplot(train_websites_count_label, aes(x = geo_loc, y = count, fill = label)) +
                     labels = c("malicious","benign")) +
   xlab("Country") +
   ylab("Number of URLs") +
-  ggtitle("Distribution of benign and malicious URLs of top 5 recorded countries") +
+  ggtitle("Distribution of benign and malicious URLs of top 3 recorded countries") +
   guides(fill = guide_legend(title = "Label")) +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5, vjust = 0.5, size = 10, 
                                   margin = margin(r = -20, unit = "pt"),
                                   #family = "serif", 
                                   lineheight = 0.9, color = "black"))
+```
+
+```{r, echo=FALSE}
+
+# Get unique country names
+countries <- unique(train_websites_top_3$geo_loc)
+
+# Get number of countries
+K <- length(countries)
+
+# Number of URLs per country, varying length of vector element
+N_list = list()
+
+# For each country, saving the number of URLs
+for (country in countries) {
+  train_websites_country <- train_websites_top_3 %>%
+    filter(geo_loc == country)
+  N_list <- c(N_list, nrow(train_websites_country))
+}
+
+# Maximum length of training URLs for all countries
+Nmax <- N_list[[which.max(N_list)]]
+
+M_list = list()
+# For each country, saving the number of URLs
+for (country in countries) {
+  test_websites_country <- test_websites_top_3 %>%
+    filter(geo_loc == country)
+  M_list <- c(M_list, nrow(test_websites_country))
+}
+
+# Maximum length of training URLs for all countries
+Mmax <- M_list[[which.max(M_list)]]
+
+# The matrix of Javascript code
+js_len_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_3 %>%
+    filter(geo_loc == country)
+  js_len_list <- c(js_len_list, list(train_websites_country$js_len_bin))
+}
+
+js_len_list <- map(js_len_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
+
+# The matrix of Javascript obfuscated code
+js_obf_len_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_3 %>%
+    filter(geo_loc == country)
+  js_obf_len_list <- c(js_obf_len_list, list(train_websites_country$js_obf_len_bin))
+}
+
+js_obf_len_list <- map(js_obf_len_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
+
+# The matrix of safety level of the URL, varying length of vector element
+https_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_3 %>%
+    filter(geo_loc == country)
+  https_list <- c(https_list, list(train_websites_country$https_bin))
+}
+https_list <- map(https_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
+
+# The matrix of safety level of the URL, varying length of vector element
+whois_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_3 %>%
+    filter(geo_loc == country)
+  whois_list <- c(whois_list, list(train_websites_country$whois_bin))
+}
+whois_list <- map(whois_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
+
+# The matrix of Javascript code, varying length of vector element
+js_len_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_3 %>%
+    filter(geo_loc == country)
+  js_len_test_list <- c(js_len_test_list, list(test_websites_country$js_len_bin))
+}
+js_len_test_list <- map(js_len_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
+
+# The matrix of Javascript code, varying length of vector element
+js_obf_len_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_3 %>%
+    filter(geo_loc == country)
+  js_obf_len_test_list <- c(js_obf_len_test_list, list(test_websites_country$js_obf_len_bin))
+}
+js_obf_len_test_list <- map(js_obf_len_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
+
+# The matrix of safety level of the URL, varying length of vector element
+https_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_3 %>%
+    filter(geo_loc == country)
+  https_test_list <- c(https_test_list, list(test_websites_country$https_bin))
+}
+https_test_list <- map(https_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
+
+# The matrix of safety level of the URL, varying length of vector element
+whois_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_3 %>%
+    filter(geo_loc == country)
+  whois_test_list <- c(whois_test_list, list(test_websites_country$whois_bin))
+}
+whois_test_list <- map(whois_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
+
+# The matrix of label of the URL (malicious/benign), varying length of vector element
+label_list = list()
+for (country in countries) {
+  train_websites_country <- train_websites_top_3 %>%
+    filter(geo_loc == country)
+  label_list <- append(label_list, list(train_websites_country$label_bin))
+}
+label_list <- map(label_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
+
+# The matrix of label of the URL (malicious/benign), varying length of vector element
+label_test_list = list()
+for (country in countries) {
+  test_websites_country <- test_websites_top_3 %>%
+    filter(geo_loc == country)
+  label_test_list <- append(label_test_list, list(test_websites_country$label_bin))
+}
+label_test_list <- map(label_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
+
+```
+
+```{r, echo=FALSE}
+stan_data <- list(
+  Nmax = Nmax,
+  Mmax = Mmax,
+  K = K,
+  N_list = N_list,
+  M_list = M_list,
+  js_len_list = as.matrix(do.call(rbind, js_len_list)),
+  js_obf_len_list = as.matrix(do.call(rbind, js_obf_len_list)),
+  https_list = as.matrix(do.call(rbind, https_list)),
+  whois_list = as.matrix(do.call(rbind, whois_list)),
+  js_len_pred_list = as.matrix(do.call(rbind, js_len_test_list)),
+  js_obf_len_pred_list = as.matrix(do.call(rbind, js_obf_len_test_list)),
+  https_pred_list = as.matrix(do.call(rbind, https_test_list)),
+  whois_pred_list = as.matrix(do.call(rbind, whois_test_list)),
+  label_list = as.matrix(do.call(rbind, label_list))
+)
 ```
 
 # Separate model
@@ -298,213 +454,111 @@ There are 1.24 billion with complete WHOIS registration, while there are current
 
 ## Stan code and running options
 
-```{r, echo=FALSE}
-
-# Get unique country names
-countries <- unique(train_websites_top_5$geo_loc)
-
-# Get number of countries
-K <- length(countries)
-
-# Number of URLs per country, varying length of vector element
-N_list = list()
-
-
-# For each country, saving the number of URLs
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  N_list <- c(N_list, nrow(train_websites_country))
-}
-
-M_list = list()
-# For each country, saving the number of URLs
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  M_list <- c(M_list, nrow(test_websites_country))
-}
-
-# The matrix of Javascript code, varying length of vector element
-js_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_list <- c(js_list, list(train_websites_country$js))
-}
-
-# The matrix of Javascript code, varying length of vector element
-js_len_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_len_list <- c(js_len_list, list(train_websites_country$js_len_bin))
-}
-
-# The matrix of Javascript code, varying length of vector element
-js_obf_len_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_obf_len_list <- c(js_obf_len_list, list(train_websites_country$js_obf_len_bin))
-}
-
-# The matrix of safety level of the URL, varying length of vector element
-safety_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  safety_list <- c(safety_list, list(train_websites_country$safety))
-}
-
-# The matrix of safety level of the URL, varying length of vector element
-https_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  https_list <- c(https_list, list(train_websites_country$https_bin))
-}
-
-# The matrix of safety level of the URL, varying length of vector element
-whois_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  whois_list <- c(whois_list, list(train_websites_country$whois_bin))
-}
-
-
-# Testing data
-# The matrix of Javascript code, varying length of vector element
-js_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_test_list <- c(js_test_list, list(test_websites_country$js))
-}
-
-# The matrix of Javascript code, varying length of vector element
-js_len_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_len_test_list <- c(js_len_test_list, list(test_websites_country$js_len_bin))
-}
-
-# The matrix of Javascript code, varying length of vector element
-js_obf_len_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_obf_len_test_list <- c(js_obf_len_test_list, list(test_websites_country$js_obf_len_bin))
-}
-
-# The matrix of safety level of the URL, varying length of vector element
-https_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  https_test_list <- c(https_test_list, list(test_websites_country$https_bin))
-}
-
-# The matrix of safety level of the URL, varying length of vector element
-whois_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  whois_test_list <- c(whois_test_list, list(test_websites_country$whois_bin))
-}
-
-# The matrix of safety level of the URL, varying length of vector element
-safety_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  safety_test_list <- c(safety_test_list, list(test_websites_country$safety))
-}
-
-# The matrix of label of the URL (malicious/benign), varying length of vector element
-label_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  label_list <- append(label_list, list(train_websites_country$label_bin))
-}
-
-# The matrix of label of the URL (malicious/benign), varying length of vector element
-label_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  label_test_list <- append(label_test_list, list(test_websites_country$label_bin))
-}
-```
-
 The Stan model code:
 ```{r, echo = TRUE, results = 'hide'}
 "
 data {
-  int<lower=1> N; // Number of URLs of a country (training)
-  int<lower=1> M; // Number of URLs of a country (testing)
-  array[N] int<lower=0,upper=1> js_len;
-  array[N] int<lower=0,upper=1> js_obf_len;
-  array[N] int<lower=0,upper=1> https;
-  array[N] int<lower=0,upper=1> whois;
-
+  int<lower=1> Nmax; // Number of maximum URLs among all countries (training)
+  int<lower=1> Mmax; // Number of maximum URLs among all countries (testing)
+  int<lower=1> K; // Number of countries
+  array[K] int<lower=1> N_list; // Number of URLs of each country (training)
+  array[K] int<lower=1> M_list; // Number of URLs of each country (testing)
+  // The training features
+  array[K, Nmax] int<lower=0,upper=1> js_len_list;
+  array[K, Nmax] int<lower=0,upper=1> js_obf_len_list;
+  array[K, Nmax] int<lower=0,upper=1> https_list;
+  array[K, Nmax] int<lower=0,upper=1> whois_list;
   // The testing predicting features
-  array[M] int<lower=0,upper=1> js_len_pred;
-  array[M] int<lower=0,upper=1> js_obf_len_pred;
-  array[M] int<lower=0,upper=1> https_pred;
-  array[M] int<lower=0,upper=1> whois_pred;
+  array[K, Mmax] int<lower=0,upper=1> js_len_pred_list;
+  array[K, Mmax] int<lower=0,upper=1> js_obf_len_pred_list;
+  array[K, Mmax] int<lower=0,upper=1> https_pred_list;
+  array[K, Mmax] int<lower=0,upper=1> whois_pred_list;
   // label for each URL: benign(0) or malicious(1)
-  array[N] int<lower=0,upper=1> label; 
+  array[K, Nmax] int<lower=0,upper=1> label_list; 
 }
 
 parameters {
-  real<lower=0, upper=1> theta_js_len; // probability for js_len
-  real<lower=0, upper=1> theta_js_obf_len; // probability for js_obf_len
-  real<lower=0, upper=1> theta_https; // probability for https
-  real<lower=0, upper=1> theta_whois; // probability for whois
-  real js_len_coeff; // Slope coefficient for js
-  real js_obf_len_coeff; // Slope coefficient for js
-  real https_coeff; // Slope coefficient for js
-  real whois_coeff; // Slope coefficient for js
-  real intercept; // Intercept coefficient for js
+  array[K] real<lower=0, upper=1> theta_js_len; // probability for js_len
+  array[K] real<lower=0, upper=1> theta_js_obf_len; // probability for js_obf_len
+  array[K] real<lower=0, upper=1> theta_https; // probability for https
+  array[K] real<lower=0, upper=1> theta_whois; // probability for whois
+  array[K] real js_len_coeff; // Slope coefficient for js_len
+  array[K] real js_obf_len_coeff; // Slope coefficient for js_obf_len
+  array[K] real https_coeff; // Slope coefficient for https_coeff
+  array[K] real whois_coeff; // Slope coefficient for whois_coeff
+  array[K] real intercept; // Intercept coefficient
 }
 
 model {
-    // Prior for the probabilities
-    theta_js_len ~ beta(1,10);
-    theta_js_obf_len ~ beta(1,10);
-    theta_https ~ beta(8,10);
-    theta_whois ~ beta(7,10);
-    // likelihood for safety and js
-    js_len ~ bernoulli(theta_js_len);
-    js_obf_len ~ bernoulli(theta_js_obf_len);
-    https ~ bernoulli(theta_https);
-    whois ~ bernoulli(theta_whois);
-    // Weakly informative prior for the coefficients
-    js_len_coeff ~ normal(0,20);
-    js_obf_len_coeff ~ normal(0,20);
-    https_coeff ~ normal(0,20);
-    whois_coeff ~ normal(0,20);
-    intercept ~ normal(0,20);
-    // Modelling of the label based on bernoulli logistic regression by multiple variable linear regression 
-    for (i in 1:N){
-      label[i] ~ bernoulli(inv_logit(intercept + https_coeff * https[i] + whois_coeff * whois[i] + js_len_coeff * js_len[i] + js_obf_len_coeff * js_obf_len[i]));
+    // Prior probabilities of the features
+    for (k in 1:K){
+        theta_js_len[k] ~ beta(1,10);
+        theta_js_obf_len[k] ~ beta(1,10);
+        theta_https[k] ~ beta(8,10);
+        theta_whois[k] ~ beta(7,10);
+    }
+    // likelihood for the features
+    for (k in 1:K){
+        js_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_len[K]);
+        js_obf_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_obf_len[K]);
+        https_list[k, 1:N_list[k]] ~ bernoulli(theta_https[K]);
+        whois_list[k, 1:N_list[k]] ~ bernoulli(theta_whois[K]);     
+    }
+    // priors of the coefficients
+    for (k in 1:K){
+       js_len_coeff[k] ~ cauchy(1,1);
+       js_obf_len_coeff[k] ~ cauchy(1,1);
+       https_coeff[k]  ~ cauchy(-1,1);
+       whois_coeff[k] ~ cauchy(-1,1);
+       intercept[k] ~ normal(0,20);        
+    }
+    // Modelling of the label based on bernoulli logistic regression by 
+    // multiple variable linear regression 
+    for (k in 1:K){
+      for (i in 1:N_list[k]){
+        label_list[k, i] ~ bernoulli(inv_logit(intercept[k] 
+            + https_coeff[k] * https_list[k, i]
+            + whois_coeff[k] * whois_list[k, i] 
+            + js_len_coeff[k] * js_len_list[k, i] 
+            + js_obf_len_coeff[k] * js_obf_len_list[k, i]));
+      }
     }
 }
 
 generated quantities {
-    vector[N] label_train_pred;
-    vector[M] label_test_pred;
+    array[K, Nmax] real label_train_pred;
+    array[K, Mmax] real label_test_pred;
+    array[Nmax] real log_likelihood; 
     // Predictions for the training data
-    for (i in 1:N){
-      label_train_pred[i] = bernoulli_rng(inv_logit(intercept + https_coeff * https[i] + whois_coeff * whois[i] + js_len_coeff * js_len[i] + js_obf_len_coeff * js_obf_len[i]));
+    for (k in 1:K){
+      for (i in 1:N_list[k]){
+        label_train_pred[k, i] = bernoulli_rng(inv_logit(intercept[k] 
+            + https_coeff[k] * https_list[k, i] 
+            + whois_coeff[k] * whois_list[k, i] 
+            + js_len_coeff[k] * js_len_list[k, i] 
+            + js_obf_len_coeff[k] * js_obf_len_list[k, i]));
+      }
     }
     // Predictions for the testing data
-    for (i in 1:M){
-      label_test_pred[i] = bernoulli_rng(inv_logit(intercept + https_coeff * https_pred[i] + whois_coeff * whois_pred[i] + js_len_coeff * js_len_pred[i] + js_obf_len_coeff * js_obf_len_pred[i]));
+    for (k in 1:K){
+      for (i in 1:M_list[k]){
+        label_test_pred[k, i] = bernoulli_rng(inv_logit(intercept[k] 
+            + https_coeff[k] * https_pred_list[k, i] 
+            + whois_coeff[k] * whois_pred_list[k, i] 
+            + js_len_coeff[k] * js_len_pred_list[k, i] 
+            + js_obf_len_coeff[k] * js_obf_len_pred_list[k, i]));
+      }
+    }
+    for (k in 1:K) {
+      if (N_list[k] == Nmax){
+        for (i in 1:Nmax){
+          log_likelihood[i] = bernoulli_lpmf(label_list[k, i] | inv_logit(intercept[k] 
+            + https_coeff[k] * https_list[k, i] 
+            + whois_coeff[k] * whois_list[k, i] 
+            + js_len_coeff[k] * js_len_list[k, i] 
+            + js_obf_len_coeff[k] * js_obf_len_list[k, i]));
+        }
+      }
     }
 }
 
@@ -513,62 +567,30 @@ generated quantities {
 
 ```{r, echo=FALSE}
 # Compiling the separate Stan model
-file_separate <- file.path("model_separate.stan")
+file_separate <- file.path("models/model_separate.stan")
 model_separate <- cmdstan_model(file_separate)
 model_separate$compile(quiet = FALSE)
 ```
 
 The sampling running options
-```{r, echo=FALSE}
-separate_sampling <- list()
-for (i in 1:K){
-  stan_data <- list(
-    N = N_list[[i]],
-    M = M_list[[i]],
-    js_len = js_len_list[[i]],
-    js_obf_len = js_obf_len_list[[i]],
-    https = https_list[[i]],
-    whois = whois_list[[i]],
-    js_len_pred = js_len_test_list[[i]],
-    js_obf_len_pred = js_obf_len_test_list[[i]],
-    https_pred = https_test_list[[i]],
-    whois_pred = whois_test_list[[i]],
-    label = label_list[[i]]
-  )
-  separate_sampling[[countries[i]]] <- model_separate$sample(data = stan_data, chains=4, iter_warmup = 2000, iter_sampling = 2000, show_messages=FALSE)#, refresh=0)
-  cat("\nSampling for country",countries[i],"\n")
-}
-```
-
 
 ```{r}
+  separate_sampling <- model_separate$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
+```
+
+```{r, echo=FALSE}
 # Set up the plotting grid
 par(mfrow = c(3,5))
 
-row_labels <- c("intercept", "HTTPS coefficient", "WHOIS coefficient")
-row_names <- c("intercept","https_coeff","whois_coeff")
+row_labels <- c("intercept", "HTTPS coefficient", "WHOIS coefficient","JS length coefficient","JS obf. length coefficient")
+row_names <- c("intercept","https_coeff","whois_coeff","js_len_coeff","js_obf_len_coeff")
 
+#separate_sampling$summary()
 # Loop through the countries
-for(i in 1:3){
-    for (j in 1:5){
+for (j in 1:3){
+  for(i in 1:5){
       # Create the subplot
-      hist(separate_sampling[[countries[j]]]$draws(row_names[i]), main = countries[j], xlab=row_labels[i])
-      # Add the country name to the top of the column
-      mtext(countries[j], side = 3, line = 0.2, outer = TRUE)
-    }
-}
-
-# Set up the plotting grid
-par(mfrow = c(2,5))
-
-row_labels <- c("JS length coefficient","JS obf. length coefficient")
-row_names <- c("js_len_coeff","js_obf_len_coeff")
-
-# Loop through the countries
-for(i in 1:2){
-    for (j in 1:5){
-      # Create the subplot
-      hist(separate_sampling[[countries[j]]]$draws(row_names[i]), main = countries[j], xlab=row_labels[i])
+      hist(separate_sampling$draws(paste(row_names[i],"[",j,"]", sep="")),main = countries[j], xlab=row_labels[i])
       # Add the country name to the top of the column
       mtext(countries[j], side = 3, line = 0.2, outer = TRUE)
     }
@@ -580,140 +602,142 @@ for(i in 1:2){
 MCMC convergence chains visualization
 ```{r, echo=FALSE}
 plotConvergence <- function (draws, paramName){
-  chain1 <- as.vector(draws[1:2000, 1])
-  chain2 <- as.vector(draws[2001:4000, 1])
-  chain3 <- as.vector(draws[4001:6000, 1])
-  chain4 <- as.vector(draws[6001:8000, 1])
+  chain1 <- as.vector(draws[1:1000, 1])
+  chain2 <- as.vector(draws[1001:2000, 1])
+  chain3 <- as.vector(draws[2001:3000, 1])
+  chain4 <- as.vector(draws[3001:4000, 1])
   iters = length(chain1)
   indices <- 1:iters
   data <- data.frame(indices, chain1, chain2, 
                               chain3, chain4)
   
-  ggplot(data, aes(x=indices)) +
-    ggtitle(paste("Separate model - USA country\nFour MCMC of the",paramName,"\n",iters,"iterations, no warm-up")) +
+  p <- ggplot(data, aes(x=indices)) +
+    ggtitle(paste("Separate model - Convergence of",paramName,"\n",iters,"sampling iterations, no warm-up")) +
     xlab("iteration") + 
     ylab(paramName) +
-    theme(plot.title = element_text(hjust = 0.5), legend.position = "right") +
+    theme(plot.title = element_text(hjust = 0.5, size=10), legend.position = "right") +
     geom_line(aes(y = chain1, color = "chain1")) + 
     geom_line(aes(y = chain2, color = "chain2")) +
     geom_line(aes(y = chain3, color = "chain3")) + 
     geom_line(aes(y = chain4, color = "chain4")) +
-    scale_color_manual(name = "MCMC chains", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black")) 
+    scale_color_manual(name = "MCMC", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black"))
+  return(p)
 }
 
-intercept_draws <- separate_sampling[[countries[1]]]$draws("intercept", format = "matrix")
-plotConvergence(intercept_draws, "intercept")
+intercept_draws <- separate_sampling$draws("intercept[1]", format = "matrix")
+p1 <- plotConvergence(intercept_draws, "intercept")
 
-https_draws <- separate_sampling[[countries[1]]]$draws("https_coeff", format = "matrix")
-plotConvergence(https_draws, "https coefficient")
+https_draws <- separate_sampling$draws("https_coeff[1]", format = "matrix")
+p2 <- plotConvergence(https_draws, "https coefficient")
 
-whois_draws <- separate_sampling[[countries[1]]]$draws("whois_coeff", format = "matrix")
-plotConvergence(whois_draws, "https coefficient")
+grid.arrange(p1, p2, ncol = 2)
+# whois_draws <- separate_sampling$draws("whois_coeff[1]", format = "matrix")
+# plotConvergence(whois_draws, "whois coefficient")
 
-js_len_draws <- separate_sampling[[countries[1]]]$draws("js_len_coeff", format = "matrix")
-plotConvergence(js_len_draws, "JS length coefficient")
+#js_len_draws <- separate_sampling$draws("js_len_coeff[1]", format = "matrix")
+#plotConvergence(js_len_draws, "JS length coefficient")
 
-js_obf_len_draws <- separate_sampling[[countries[1]]]$draws("js_obf_len_coeff", format = "matrix")
-plotConvergence(js_obf_len_draws, "JS obfuscated length coefficient")
+#js_obf_len_draws <- separate_sampling$draws("js_obf_len_coeff[1]", format = "matrix")
+#plotConvergence(js_obf_len_draws, "JS obfuscated length coefficient")
 ```
 
-Convergence analysis using $\hat{R}$-values
-```{r}
-# Rhat is in assignment 5
-calculate_Rhat <- function(draws, paramName){
-  chain1 <- as.vector(draws[1:2000, 1])
-  chain2 <- as.vector(draws[2001:4000, 1])
-  chain3 <- as.vector(draws[4001:6000, 1])
-  chain4 <- as.vector(draws[6001:8000, 1])
-  
-  sims <- matrix(c(chain1, chain2, chain3, chain4), ncol = 4)
-  cat("\nThe Rhat value for",paramName,"after 2000 warm-up iterations is:",rhat_basic(x=sims, split=TRUE))
-
-}
-
-# ESS is in assignment 4
-calculate_ESS <- function(draws, paramName){
-  chain1 <- as.vector(draws[1:2000, 1])
-  chain2 <- as.vector(draws[2001:4000, 1])
-  chain3 <- as.vector(draws[4001:6000, 1])
-  chain4 <- as.vector(draws[6001:8000, 1])
-  
-  sims <- matrix(c(chain1, chain2, chain3, chain4), ncol = 4)
-  cat("\nThe Rhat value for",paramName,"after 2000 warm-up iterations is:",rhat_basic(x=sims, split=TRUE))
-
-}
-
-# You can also use summary() to calculate Rhat and ESS but it is kinda slow this time. We don't know why
-# separate_sampling[[countries[1]]]$summary()
-
-intercept_draws <- separate_sampling[[countries[1]]]$draws("intercept", format = "matrix")
-calculate_Rhat(intercept_draws, "intercept")
-
-https_draws <- separate_sampling[[countries[1]]]$draws("https_coeff", format = "matrix")
-calculate_Rhat(https_draws, "https coefficient")
-
-whois_draws <- separate_sampling[[countries[1]]]$draws("whois_coeff", format = "matrix")
-calculate_Rhat(whois_draws, "whois coefficient")
-
-js_len_draws <- separate_sampling[[countries[1]]]$draws("js_len_coeff", format = "matrix")
-calculate_Rhat(js_len_draws, "JS length coefficient")
-
-js_obf_len_draws <- separate_sampling[[countries[1]]]$draws("js_obf_len_coeff", format = "matrix")
-calculate_Rhat(js_obf_len_draws, "JS obfuscated length coefficient")
-
-```
 HMC specific convergence diagnostics
-```{r, echo=FALSE}
-for (i in 1:K){
-  cat("Country",countries[i],"\n\n")
-  print(separate_sampling[[countries[i]]]$diagnostic_summary())
-}
+```{r, eval=TRUE, include=TRUE}
+separate_sampling$diagnostic_summary()
 ```
-Rhat values and effective sample size
-```{r}
-separate_sampling[[countries[1]]]$summary(c("intercept", "https_coeff","whois_coeff","js_len_coeff","js_obf_len_coeff"))[, c("variable", "rhat", "ess_bulk", "ess_tail")]
 
+$\hat{R}$-values and effective sample size
+```{r, echo=FALSE}
+summaryDiagnostics = data.frame()
+for (i in 1:K){
+  summaryDiagnosticsCountry <- separate_sampling$summary(c(paste("intercept[",i,"]", sep=""), paste("https_coeff[",i,"]", sep=""),paste("whois_coeff[",i,"]", sep=""),paste("js_len_coeff[",i,"]", sep=""),paste("js_obf_len_coeff[",i,"]", sep="")))[, c("variable", "rhat", "ess_bulk", "ess_tail")]
+ summaryDiagnostics <- rbind(summaryDiagnostics, summaryDiagnosticsCountry)
+ 
+}
+summaryDiagnostics$variable <- 1:15 
+summaryDiagnostics <- summaryDiagnostics %>% rename(index = variable)
+
+p1 <- ggplot(summaryDiagnostics, aes(x = index, y = rhat)) +
+  geom_point() +
+  geom_hline(yintercept = 1.05, color = "red") +
+  annotate("text", x = 15, y = 1.055, label = "critical Rhat value = 1.05", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Rhat values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Rhat values\n of all coefficients")
+
+p2 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_bulk)) +
+  geom_point() +
+  geom_hline(yintercept = 2000, color = "red") +
+  annotate("text", x = 17, y = 1800, label = "Samples = 2000", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Bulk ESS values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Bulk effective sample size\n of all coefficients")
+
+p3 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_tail)) +
+  geom_point() +
+  geom_hline(yintercept = 2000, color = "red") +
+  annotate("text", x = 17, y = 1800, label = "Samples = 2000", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Tail ESS values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Tail effective sample size\n of all coefficients")
+
+grid.arrange(p1, p2, p3, ncol = 3)
 ```
 ## Posterior predictive checks
-```{r}
-metricsName <- c("Accuracy", "Prevalence", "Sensitivity", "Specificity", "Precision", "Recall", "F1")
+
+```{r, echo=FALSE}
+metricsName <- c("Accuracy", "Precision", "Recall", "F1")
 metricsSummary <- data.frame(Metrics=metricsName)
 metricsSummary$Accuracy <- NULL
-metricsSummary$Prevalence <- NULL
 metricsSummary$Precision <- NULL
 metricsSummary$Recall <- NULL
-metricsSummary$Sensitivity <- NULL
-metricsSummary$Specificity <- NULL
 metricsSummary$F1 <- NULL
-
+#print(metricsSummary)
 sumTP <- 0
 sumTN <- 0
 sumFP <- 0
 sumFN <- 0
 listTrue <- c()
 listPred <- c()
-for (i in 1:K){
-  draws <- separate_sampling[[countries[i]]]$draws("label_train_pred", format = "matrix")
-  confusion_matrix <- table(as.vector(draws[8000,]), label_list[[i]])
-  listTrue <- c(listTrue, label_list[[i]])
-  listPred <- c(listPred, as.vector(draws[8000,]))
+for (k in 1:K){
+  predicted_train = c()
+  for (i in 1:N_list[[k]]){
 
+    draws <- separate_sampling$draws(paste("label_train_pred[",k,",",i,"]", sep=""), format = "matrix")
+    #print(as.vector(draws[1, 1]))
+    predicted_train <- c(predicted_train, as.vector(draws[1, ]))
+  }
+  #draws <- separate_sampling$draws(paste("label_train_pred[",i,"]"), format = "matrix")
+  true_train = label_list[[k]][1:N_list[[k]]]
+  confusion_matrix <- table(predicted_train, true_train)
+  #print(confusion_matrix)
+  listTrue <- c(listTrue, true_train)
+  listPred <- c(listPred, predicted_train)
+  #print(listTrue)
+  #print(listPred)
   TP <- confusion_matrix[2,2]
   TN <- confusion_matrix[1,1]
   FP <-confusion_matrix[1,2]
   FN <-confusion_matrix[2,1]
+  #cat(TP,TN,FP,FN)
   sumTP <- sumTP + TP
   sumTN <- sumTN + TN
   sumFP <- sumFP + FP
   sumFN <- sumFN + FN
   accuracy <- (TP+TN)/(TP+FP+FN+TN) 
-  prevalence <- (TP+FN)/(TP+FP+FN+TN) 
-  sensitivity <- TP/(TP+FN)
-  specificity <- FN/(FN+FP)
   precision <- TP/(TP+FP)
   recall <- TP/(TP+FN)
   f1 <-  2*(precision*recall)/(precision+recall)
-  metricsSummary[,countries[i]] <- c(accuracy, prevalence, sensitivity, specificity, precision,recall,f1)
+  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
 }
 accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
 prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
@@ -722,7 +746,7 @@ specificity <- sumFN/(sumFN+sumFP)
 precision <- sumTP/(sumTP+sumFP)
 recall <- sumTP/(sumTP+sumFN)
 f1 <-  2*(precision*recall)/(precision+recall)
-metricsSummary[,"All countries"] <- c(accuracy, prevalence, sensitivity, specificity, precision,recall,f1)
+metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
 metricsSummary
 ```
 
@@ -741,45 +765,45 @@ plot_confusion_matrix(cfm,
 
 ## Predictive performance assessment
 
-```{r}
-metricsName <- c("Accuracy", "Prevalence", "Sensitivity", "Specificity", "Precision", "Recall", "F1")
+```{r, echo=FALSE}
+metricsName <- c("Accuracy", "Precision", "Recall", "F1")
 metricsSummary <- data.frame(Metrics=metricsName)
 metricsSummary$Accuracy <- NULL
-metricsSummary$Prevalence <- NULL
 metricsSummary$Precision <- NULL
 metricsSummary$Recall <- NULL
-metricsSummary$Sensitivity <- NULL
-metricsSummary$Specificity <- NULL
 metricsSummary$F1 <- NULL
-
+#print(metricsSummary)
 sumTP <- 0
 sumTN <- 0
 sumFP <- 0
 sumFN <- 0
 listTrue <- c()
 listPred <- c()
-for (i in 1:K){
-  draws <- separate_sampling[[countries[i]]]$draws("label_test_pred", format = "matrix")
-  confusion_matrix <- table(as.vector(draws[8000,]), label_test_list[[i]])
-  listTrue <- c(listTrue, label_test_list[[i]])
-  listPred <- c(listPred, as.vector(draws[8000,]))
+for (k in 1:K){
+  predicted_test = c()
+  for (i in 1:M_list[[k]]){
+    draws <- separate_sampling$draws(paste("label_test_pred[",k,",",i,"]", sep=""), format = "matrix")
+    predicted_test <- c(predicted_test, as.vector(draws[1, ]))
+  }
+  true_test = label_test_list[[k]][1:M_list[[k]]]
+  confusion_matrix <- table(predicted_test, true_test)
+  listTrue <- c(listTrue, true_test)
+  listPred <- c(listPred, predicted_test)
 
   TP <- confusion_matrix[2,2]
   TN <- confusion_matrix[1,1]
   FP <-confusion_matrix[1,2]
   FN <-confusion_matrix[2,1]
+
   sumTP <- sumTP + TP
   sumTN <- sumTN + TN
   sumFP <- sumFP + FP
   sumFN <- sumFN + FN
   accuracy <- (TP+TN)/(TP+FP+FN+TN) 
-  prevalence <- (TP+FN)/(TP+FP+FN+TN) 
-  sensitivity <- TP/(TP+FN)
-  specificity <- FN/(FN+FP)
   precision <- TP/(TP+FP)
   recall <- TP/(TP+FN)
   f1 <-  2*(precision*recall)/(precision+recall)
-  metricsSummary[,countries[i]] <- c(accuracy, prevalence, sensitivity, specificity, precision,recall,f1)
+  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
 }
 accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
 prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
@@ -788,11 +812,11 @@ specificity <- sumFN/(sumFN+sumFP)
 precision <- sumTP/(sumTP+sumFP)
 recall <- sumTP/(sumTP+sumFN)
 f1 <-  2*(precision*recall)/(precision+recall)
-metricsSummary[,"All countries"] <- c(accuracy, prevalence, sensitivity, specificity, precision,recall,f1)
+metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
 metricsSummary
 ```
 
-```{r, warning = FALSE}
+```{r, echo=FALSE}
 confusion_matrix <- tibble("actual" = listTrue,
                      "prediction" = listPred)
 
@@ -808,12 +832,51 @@ plot_confusion_matrix(cfm,
 
 ## Prior sensitivity analysis
 
+```{r, echo=FALSE}
+# Compiling the separate Stan model
+file_separate_prior_sensitivity1 <- file.path("models/model_separate_prior_sensitivity_1.stan")
+model_separate_prior_sensitivity1 <- cmdstan_model(file_separate_prior_sensitivity1)
+model_separate_prior_sensitivity1$compile(quiet = FALSE)
 
+file_separate_prior_sensitivity2 <- file.path("models/model_separate_prior_sensitivity_2.stan")
+model_separate_prior_sensitivity2 <- cmdstan_model(file_separate_prior_sensitivity2)
+model_separate_prior_sensitivity2$compile(quiet = FALSE)
+```
 
+The sampling running options
+```{r}
+  separate_sampling_prior_sensitivity1 <- model_separate_prior_sensitivity1$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
+  separate_sampling_prior_sensitivity2 <- model_separate_prior_sensitivity2$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
+```
 
+```{r, warning=FALSE, echo=FALSE}
+loo_loglike_separate0 <- separate_sampling$loo(variables="log_likelihood",r_eff=TRUE)
+loo_loglike_separate1 <- separate_sampling_prior_sensitivity1$loo(variables="log_likelihood",r_eff=TRUE)
+loo_loglike_separate2 <- separate_sampling_prior_sensitivity2$loo(variables="log_likelihood",r_eff=TRUE)
 
+cat("The elpd value of the separate model 0 is\n")
+print(loo_loglike_separate0$estimates[1][1])
 
+cat("The elpd value of the separate model 1 is\n")
+print(loo_loglike_separate1$estimates[1][1])
 
+cat("The elpd value of the separate model 2 is\n")
+print(loo_loglike_separate2$estimates[1][1])
+
+```
+
+```{r}
+loo_compare_separate <- loo_compare(x = list(loo_loglike_separate0=loo_loglike_separate0, loo_loglike_separate1=loo_loglike_separate1, loo_loglike_separate2=loo_loglike_separate2))
+print(loo_compare_separate)
+```
+
+We know that elpd_loo is the Bayesian LOO estimate of the expected log pointwise predictive density and is a sum of N individual pointwise log predictive densities. From the comparison table, elpd_diff is the difference in elpd_loo for two models. If more than two models are compared, the difference is computed relative to the model with highest elpd_loo, which is true in this case, as I am comparing three models
+
+The standard error of component-wise differences of elpd_loo (Eq 24 in VGG2017) between two models. This SE is smaller than the SE for individual models due to correlation (i.e., if some observations are easier and some more difficult to predict for all models)
+
+As quick rule: If elpd difference (elpd_diff in loo package) is less than 4, the difference is small. If elpd difference (elpd_diff in loo package) is larger than 4, then compare that difference to standard error of elpd_diff. When the difference (elpd_diff) is larger than 4, the number of observations is larger than 100 and the model is not badly misspecified then normal approximation and SE are quite reliable description of the uncertainty in the difference. Differences smaller than 4 are small and then the models have very similar predictive performance and it doesn’t matter if the normal approximation fails or SE is underestimated @akiLoo.
+
+SE assumes that normal approximation describes well the uncertainty related to the expected difference. Due to cross-validation folds not being independent, SE tends to be underestimated especially if the number of observations is small or the models are badly misspecified. The whole normal approximation tends to fail if the models are very similar or the models are badly misspecified. 
 
 
 # Pooled model
@@ -826,131 +889,6 @@ Default protocol https is used by 81.5% of all the websites. @https://w3techs.co
 There are 1.24 billion with complete WHOIS registration, while there are currently 1.7 billion websites. So the ratio of complete WHOIS website is 0.73.
 
 ## Stan code and running options
-```{r, echo=FALSE}
-
-# Get unique country names
-countries <- unique(train_websites_top_5$geo_loc)
-
-# Get number of countries
-K <- length(countries)
-
-# Number of URLs per country, varying length of vector element
-N_list = list()
-
-# For each country, saving the number of URLs
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  N_list <- c(N_list, nrow(train_websites_country))
-}
-
-# Maximum length of training URLs for all countries
-Nmax <- N_list[[which.max(N_list)]]
-
-M_list = list()
-# For each country, saving the number of URLs
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  M_list <- c(M_list, nrow(test_websites_country))
-}
-
-# Maximum length of training URLs for all countries
-Mmax <- M_list[[which.max(M_list)]]
-
-# The matrix of Javascript code
-js_len_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_len_list <- c(js_len_list, list(train_websites_country$js_len_bin))
-}
-
-js_len_list <- map(js_len_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
-
-# The matrix of Javascript obfuscated code
-js_obf_len_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_obf_len_list <- c(js_obf_len_list, list(train_websites_country$js_obf_len_bin))
-}
-
-js_obf_len_list <- map(js_obf_len_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
-
-# The matrix of safety level of the URL, varying length of vector element
-https_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  https_list <- c(https_list, list(train_websites_country$https_bin))
-}
-https_list <- map(https_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
-
-# The matrix of safety level of the URL, varying length of vector element
-whois_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  whois_list <- c(whois_list, list(train_websites_country$whois_bin))
-}
-whois_list <- map(whois_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
-
-# The matrix of Javascript code, varying length of vector element
-js_len_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_len_test_list <- c(js_len_test_list, list(test_websites_country$js_len_bin))
-}
-js_len_test_list <- map(js_len_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
-
-# The matrix of Javascript code, varying length of vector element
-js_obf_len_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  js_obf_len_test_list <- c(js_obf_len_test_list, list(test_websites_country$js_obf_len_bin))
-}
-js_obf_len_test_list <- map(js_obf_len_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
-
-# The matrix of safety level of the URL, varying length of vector element
-https_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  https_test_list <- c(https_test_list, list(test_websites_country$https_bin))
-}
-https_test_list <- map(https_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
-
-# The matrix of safety level of the URL, varying length of vector element
-whois_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  whois_test_list <- c(whois_test_list, list(test_websites_country$whois_bin))
-}
-whois_test_list <- map(whois_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
-
-# The matrix of label of the URL (malicious/benign), varying length of vector element
-label_list = list()
-for (country in countries) {
-  train_websites_country <- train_websites_top_5 %>%
-    filter(geo_loc == country)
-  label_list <- append(label_list, list(train_websites_country$label_bin))
-}
-label_list <- map(label_list, function(x) {return(c(x, rep(0, Nmax - length(x))))})
-
-# The matrix of label of the URL (malicious/benign), varying length of vector element
-label_test_list = list()
-for (country in countries) {
-  test_websites_country <- test_websites_top_5 %>%
-    filter(geo_loc == country)
-  label_test_list <- append(label_test_list, list(test_websites_country$label_bin))
-}
-label_test_list <- map(label_test_list, function(x) {return(c(x, rep(0, Mmax - length(x))))})
-
-```
 
 The Stan model code:
 ```{r, echo = TRUE, results = 'hide'}
@@ -960,105 +898,33 @@ The Stan model code:
 ```
 
 ```{r, echo=FALSE}
-# Compiling the hierarchical Stan model
-file_hierarchical <- file.path("model_hierarchical.stan")
-model_hierarchical <- cmdstan_model(file_hierarchical)
-model_hierarchical$compile(quiet = FALSE)
-```
-```{r, echo=FALSE}
-# Compiling the pooled Stan model
-file_pooled <- file.path("model_pooled.stan")
+# Compiling the separate Stan model
+file_pooled <- file.path("models/model_pooled.stan")
 model_pooled <- cmdstan_model(file_pooled)
 model_pooled$compile(quiet = FALSE)
 ```
 
 The sampling running options
-```{r, echo=FALSE}
-stan_data_hierarchical <- list(
-  Nmax = Nmax,
-  Mmax = Mmax,
-  K = K,
-  N_list = N_list,
-  M_list = M_list,
-  js_len_list = as.matrix(do.call(rbind, js_len_list)),
-  js_obf_len_list = as.matrix(do.call(rbind, js_obf_len_list)),
-  https_list = as.matrix(do.call(rbind, https_list)),
-  whois_list = as.matrix(do.call(rbind, whois_list)),
-  js_len_pred_list = as.matrix(do.call(rbind, js_len_test_list)),
-  js_obf_len_pred_list = as.matrix(do.call(rbind, js_obf_len_test_list)),
-  https_pred_list = as.matrix(do.call(rbind, https_test_list)),
-  whois_pred_list = as.matrix(do.call(rbind, whois_test_list)),
-  label_list = as.matrix(do.call(rbind, label_list))
-)
 
-  hierarchical_sampling <- model_hierarchical$sample(data = stan_data_hierarchical, chains=4, iter_warmup = 2000, iter_sampling = 2000, refresh=0)
- 
-
+```{r}
+pooled_sampling <- model_pooled$sample(data = stan_data, chains=4, 
+  iter_warmup = 1000, iter_sampling = 1000)#, refresh=0)
 ```
 
 ```{r, echo=FALSE}
-stan_data_pooled <- list(
-  Nmax = Nmax,
-  Mmax = Mmax,
-  K = K,
-  N_list = N_list,
-  M_list = M_list,
-  js_len_list = as.matrix(do.call(rbind, js_len_list)),
-  js_obf_len_list = as.matrix(do.call(rbind, js_obf_len_list)),
-  https_list = as.matrix(do.call(rbind, https_list)),
-  whois_list = as.matrix(do.call(rbind, whois_list)),
-  js_len_pred_list = as.matrix(do.call(rbind, js_len_test_list)),
-  js_obf_len_pred_list = as.matrix(do.call(rbind, js_obf_len_test_list)),
-  https_pred_list = as.matrix(do.call(rbind, https_test_list)),
-  whois_pred_list = as.matrix(do.call(rbind, whois_test_list)),
-  label_list = as.matrix(do.call(rbind, label_list))
-)
-
-  pooled_sampling <- model_pooled$sample(data = stan_data_pooled, chains=4, iter_warmup = 2000, iter_sampling = 2000)
- 
-
-```
-
-```{r}
-hierarchical_sampling$output
-```
-
-```{r}
-m <- hierarchical_sampling$draws("intercept", format="matrix")
-m$
-```
-```{r}
 # Set up the plotting grid
-par(mfrow = c(3,5))
+par(mfrow = c(3,3))
 
-row_labels <- c("intercept", "HTTPS coefficient", "WHOIS coefficient")
-row_names <- c("intercept","https_coeff","whois_coeff")
+row_labels <- c(" θ(JS length)","θ(JS obf. length)","θ(https)","θ(whois)", "intercept", "HTTPS coefficient", "WHOIS coefficient","JS length coefficient","JS obf. length coefficient")
+row_names <- c("theta_js_len","theta_js_obf_len","theta_https","theta_whois","intercept","https_coeff","whois_coeff","js_len_coeff","js_obf_len_coeff")
 
+#pooled_sampling$summary()
 # Loop through the countries
-for(i in 1:3){
-    for (j in 1:5){
-      # Create the subplot
-      hist(hierarchical_sampling$draws(row_names[i]), main = countries[j], xlab=row_labels[i])
-      # Add the country name to the top of the column
-      mtext(countries[j], side = 3, line = 0.2, outer = TRUE)
-    }
-}
+for(i in 1:9){
+    # Create the subplot
+    hist(pooled_sampling$draws(row_names[i]), main=row_labels[i], xlab=row_labels[i])
+  }
 
-# Set up the plotting grid
-par(mfrow = c(2,5))
-
-row_labels <- c("JS length coefficient","JS obf. length coefficient")
-row_names <- c("js_len_coeff","js_obf_len_coeff")
-
-# Loop through the countries
-for(i in 1:2){
-    for (j in 1:5){
-      # Create the subplot
-      hist(hierarchical_sampling$draws(row_names[i]), main = countries[j], xlab=row_labels[i])
-      # Add the country name to the top of the column
-      mtext(countries[j], side = 3, line = 0.2, outer = TRUE)
-    }
-}
 ```
 
 ## Convergence diagnostics
@@ -1066,140 +932,143 @@ for(i in 1:2){
 MCMC convergence chains visualization
 ```{r, echo=FALSE}
 plotConvergence <- function (draws, paramName){
-  chain1 <- as.vector(draws[1:2000, 1])
-  chain2 <- as.vector(draws[2001:4000, 1])
-  chain3 <- as.vector(draws[4001:6000, 1])
-  chain4 <- as.vector(draws[6001:8000, 1])
+  chain1 <- as.vector(draws[1:1000, 1])
+  chain2 <- as.vector(draws[1001:2000, 1])
+  chain3 <- as.vector(draws[2001:3000, 1])
+  chain4 <- as.vector(draws[3001:4000, 1])
   iters = length(chain1)
   indices <- 1:iters
   data <- data.frame(indices, chain1, chain2, 
                               chain3, chain4)
   
-  ggplot(data, aes(x=indices)) +
-    ggtitle(paste("hierarchical model - USA country\nFour MCMC of the",paramName,"\n",iters,"iterations, no warm-up")) +
+  p <- ggplot(data, aes(x=indices)) +
+    ggtitle(paste("Pooled model - Convergence of",paramName,"\n",iters,"sampling iterations, no warm-up")) +
     xlab("iteration") + 
     ylab(paramName) +
-    theme(plot.title = element_text(hjust = 0.5), legend.position = "right") +
+    theme(plot.title = element_text(hjust = 0.5, size=10), legend.position = "right") +
     geom_line(aes(y = chain1, color = "chain1")) + 
     geom_line(aes(y = chain2, color = "chain2")) +
     geom_line(aes(y = chain3, color = "chain3")) + 
     geom_line(aes(y = chain4, color = "chain4")) +
-    scale_color_manual(name = "MCMC chains", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black")) 
+    scale_color_manual(name = "MCMC", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black"))
+  return(p)
 }
 
-intercept_draws <- hierarchical_sampling[[countries[1]]]$draws("intercept", format = "matrix")
-plotConvergence(intercept_draws, "intercept")
+intercept_draws <- pooled_sampling$draws("intercept", format = "matrix")
+p1 <- plotConvergence(intercept_draws, "intercept")
 
-https_draws <- hierarchical_sampling[[countries[1]]]$draws("https_coeff", format = "matrix")
-plotConvergence(https_draws, "https coefficient")
+https_draws <- pooled_sampling$draws("https_coeff", format = "matrix")
+p2 <- plotConvergence(https_draws, "https coefficient")
 
-whois_draws <- hierarchical_sampling[[countries[1]]]$draws("whois_coeff", format = "matrix")
-plotConvergence(whois_draws, "https coefficient")
+grid.arrange(p1, p2, ncol = 2)
+# whois_draws <- pooled_sampling$draws("whois_coeff[1]", format = "matrix")
+# plotConvergence(whois_draws, "whois coefficient")
 
-js_len_draws <- hierarchical_sampling[[countries[1]]]$draws("js_len_coeff", format = "matrix")
-plotConvergence(js_len_draws, "JS length coefficient")
+#js_len_draws <- pooled_sampling$draws("js_len_coeff[1]", format = "matrix")
+#plotConvergence(js_len_draws, "JS length coefficient")
 
-js_obf_len_draws <- hierarchical_sampling[[countries[1]]]$draws("js_obf_len_coeff", format = "matrix")
-plotConvergence(js_obf_len_draws, "JS obfuscated length coefficient")
+#js_obf_len_draws <- pooled_sampling$draws("js_obf_len_coeff[1]", format = "matrix")
+#plotConvergence(js_obf_len_draws, "JS obfuscated length coefficient")
 ```
 
-Convergence analysis using $\hat{R}$-values
-```{r}
-# Rhat is in assignment 5
-calculate_Rhat <- function(draws, paramName){
-  chain1 <- as.vector(draws[1:2000, 1])
-  chain2 <- as.vector(draws[2001:4000, 1])
-  chain3 <- as.vector(draws[4001:6000, 1])
-  chain4 <- as.vector(draws[6001:8000, 1])
-  
-  sims <- matrix(c(chain1, chain2, chain3, chain4), ncol = 4)
-  cat("\nThe Rhat value for",paramName,"after 2000 warm-up iterations is:",rhat_basic(x=sims, split=TRUE))
-
-}
-
-# ESS is in assignment 4
-calculate_ESS <- function(draws, paramName){
-  chain1 <- as.vector(draws[1:2000, 1])
-  chain2 <- as.vector(draws[2001:4000, 1])
-  chain3 <- as.vector(draws[4001:6000, 1])
-  chain4 <- as.vector(draws[6001:8000, 1])
-  
-  sims <- matrix(c(chain1, chain2, chain3, chain4), ncol = 4)
-  cat("\nThe Rhat value for",paramName,"after 2000 warm-up iterations is:",rhat_basic(x=sims, split=TRUE))
-
-}
-
-# You can also use summary() to calculate Rhat and ESS but it is kinda slow this time. We don't know why
-# hierarchical_sampling[[countries[1]]]$summary()
-
-intercept_draws <- hierarchical_sampling[[countries[1]]]$draws("intercept", format = "matrix")
-calculate_Rhat(intercept_draws, "intercept")
-
-https_draws <- hierarchical_sampling[[countries[1]]]$draws("https_coeff", format = "matrix")
-calculate_Rhat(https_draws, "https coefficient")
-
-whois_draws <- hierarchical_sampling[[countries[1]]]$draws("whois_coeff", format = "matrix")
-calculate_Rhat(whois_draws, "whois coefficient")
-
-js_len_draws <- hierarchical_sampling[[countries[1]]]$draws("js_len_coeff", format = "matrix")
-calculate_Rhat(js_len_draws, "JS length coefficient")
-
-js_obf_len_draws <- hierarchical_sampling[[countries[1]]]$draws("js_obf_len_coeff", format = "matrix")
-calculate_Rhat(js_obf_len_draws, "JS obfuscated length coefficient")
-
-```
 HMC specific convergence diagnostics
-```{r, echo=FALSE}
-for (i in 1:K){
-  cat("Country",countries[i],"\n\n")
-  print(hierarchical_sampling[[countries[i]]]$diagnostic_summary())
-}
+```{r, eval=TRUE, include=TRUE}
+pooled_sampling$diagnostic_summary()
 ```
-Rhat values and effective sample size
-```{r}
-hierarchical_sampling[[countries[1]]]$summary(c("intercept", "https_coeff","whois_coeff","js_len_coeff","js_obf_len_coeff"))[, c("variable", "rhat", "ess_bulk", "ess_tail")]
 
+$\hat{R}$-values and effective sample size
+```{r, echo=FALSE}
+summaryDiagnostics = data.frame()
+for (i in 1:K){
+  summaryDiagnosticsCountry <- pooled_sampling$summary(c("intercept","https_coeff",
+    "whois_coeff","js_len_coeff","js_obf_len_coeff"))[, c("variable", "rhat", "ess_bulk", "ess_tail")]
+ summaryDiagnostics <- rbind(summaryDiagnostics, summaryDiagnosticsCountry)
+ 
+}
+summaryDiagnostics$variable <- 1:15 
+summaryDiagnostics <- summaryDiagnostics %>% rename(index = variable)
+
+p1 <- ggplot(summaryDiagnostics, aes(x = index, y = rhat)) +
+  geom_point() +
+  geom_hline(yintercept = 1.05, color = "red") +
+  annotate("text", x = 15, y = 1.055, label = "critical Rhat value = 1.05", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Rhat values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Rhat values\n of all coefficients")
+
+p2 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_bulk)) +
+  geom_point() +
+  geom_hline(yintercept = 2000, color = "red") +
+  annotate("text", x = 17, y = 1800, label = "Samples = 2000", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Bulk ESS values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Bulk effective sample size\n of all coefficients")
+
+p3 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_tail)) +
+  geom_point() +
+  geom_hline(yintercept = 2000, color = "red") +
+  annotate("text", x = 17, y = 1800, label = "Samples = 2000", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Tail ESS values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Tail effective sample size\n of all coefficients")
+
+grid.arrange(p1, p2, p3, ncol = 3)
 ```
 ## Posterior predictive checks
-```{r}
-metricsName <- c("Accuracy", "Prevalence", "Sensitivity", "Specificity", "Precision", "Recall", "F1")
+
+```{r, echo=FALSE}
+metricsName <- c("Accuracy", "Precision", "Recall", "F1")
 metricsSummary <- data.frame(Metrics=metricsName)
 metricsSummary$Accuracy <- NULL
-metricsSummary$Prevalence <- NULL
 metricsSummary$Precision <- NULL
 metricsSummary$Recall <- NULL
-metricsSummary$Sensitivity <- NULL
-metricsSummary$Specificity <- NULL
 metricsSummary$F1 <- NULL
-
+#print(metricsSummary)
 sumTP <- 0
 sumTN <- 0
 sumFP <- 0
 sumFN <- 0
 listTrue <- c()
 listPred <- c()
-for (i in 1:K){
-  draws <- hierarchical_sampling[[countries[i]]]$draws("label_train_pred", format = "matrix")
-  confusion_matrix <- table(as.vector(draws[8000,]), label_list[[i]])
-  listTrue <- c(listTrue, label_list[[i]])
-  listPred <- c(listPred, as.vector(draws[8000,]))
+for (k in 1:K){
+  predicted_train = c()
+  for (i in 1:N_list[[k]]){
 
+    draws <- pooled_sampling$draws(paste("label_train_pred[",k,",",i,"]", sep=""), format = "matrix")
+    #print(as.vector(draws[1, 1]))
+    predicted_train <- c(predicted_train, as.vector(draws[1, ]))
+  }
+  #draws <- pooled_sampling$draws(paste("label_train_pred[",i,"]"), format = "matrix")
+  true_train = label_list[[k]][1:N_list[[k]]]
+  confusion_matrix <- table(predicted_train, true_train)
+  #print(confusion_matrix)
+  listTrue <- c(listTrue, true_train)
+  listPred <- c(listPred, predicted_train)
+  #print(listTrue)
+  #print(listPred)
   TP <- confusion_matrix[2,2]
   TN <- confusion_matrix[1,1]
   FP <-confusion_matrix[1,2]
   FN <-confusion_matrix[2,1]
+  #cat(TP,TN,FP,FN)
   sumTP <- sumTP + TP
   sumTN <- sumTN + TN
   sumFP <- sumFP + FP
   sumFN <- sumFN + FN
   accuracy <- (TP+TN)/(TP+FP+FN+TN) 
-  prevalence <- (TP+FN)/(TP+FP+FN+TN) 
-  sensitivity <- TP/(TP+FN)
-  specificity <- FN/(FN+FP)
   precision <- TP/(TP+FP)
   recall <- TP/(TP+FN)
   f1 <-  2*(precision*recall)/(precision+recall)
-  metricsSummary[,countries[i]] <- c(accuracy, prevalence, sensitivity, specificity, precision,recall,f1)
+  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
 }
 accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
 prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
@@ -1208,7 +1077,7 @@ specificity <- sumFN/(sumFN+sumFP)
 precision <- sumTP/(sumTP+sumFP)
 recall <- sumTP/(sumTP+sumFN)
 f1 <-  2*(precision*recall)/(precision+recall)
-metricsSummary[,"All countries"] <- c(accuracy, prevalence, sensitivity, specificity, precision,recall,f1)
+metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
 metricsSummary
 ```
 
@@ -1227,45 +1096,45 @@ plot_confusion_matrix(cfm,
 
 ## Predictive performance assessment
 
-```{r}
-metricsName <- c("Accuracy", "Prevalence", "Sensitivity", "Specificity", "Precision", "Recall", "F1")
+```{r, echo=FALSE}
+metricsName <- c("Accuracy", "Precision", "Recall", "F1")
 metricsSummary <- data.frame(Metrics=metricsName)
 metricsSummary$Accuracy <- NULL
-metricsSummary$Prevalence <- NULL
 metricsSummary$Precision <- NULL
 metricsSummary$Recall <- NULL
-metricsSummary$Sensitivity <- NULL
-metricsSummary$Specificity <- NULL
 metricsSummary$F1 <- NULL
-
+#print(metricsSummary)
 sumTP <- 0
 sumTN <- 0
 sumFP <- 0
 sumFN <- 0
 listTrue <- c()
 listPred <- c()
-for (i in 1:K){
-  draws <- hierarchical_sampling[[countries[i]]]$draws("label_test_pred", format = "matrix")
-  confusion_matrix <- table(as.vector(draws[8000,]), label_test_list[[i]])
-  listTrue <- c(listTrue, label_test_list[[i]])
-  listPred <- c(listPred, as.vector(draws[8000,]))
+for (k in 1:K){
+  predicted_test = c()
+  for (i in 1:M_list[[k]]){
+    draws <- pooled_sampling$draws(paste("label_test_pred[",k,",",i,"]", sep=""), format = "matrix")
+    predicted_test <- c(predicted_test, as.vector(draws[1, ]))
+  }
+  true_test = label_test_list[[k]][1:M_list[[k]]]
+  confusion_matrix <- table(predicted_test, true_test)
+  listTrue <- c(listTrue, true_test)
+  listPred <- c(listPred, predicted_test)
 
   TP <- confusion_matrix[2,2]
   TN <- confusion_matrix[1,1]
   FP <-confusion_matrix[1,2]
   FN <-confusion_matrix[2,1]
+
   sumTP <- sumTP + TP
   sumTN <- sumTN + TN
   sumFP <- sumFP + FP
   sumFN <- sumFN + FN
   accuracy <- (TP+TN)/(TP+FP+FN+TN) 
-  prevalence <- (TP+FN)/(TP+FP+FN+TN) 
-  sensitivity <- TP/(TP+FN)
-  specificity <- FN/(FN+FP)
   precision <- TP/(TP+FP)
   recall <- TP/(TP+FN)
   f1 <-  2*(precision*recall)/(precision+recall)
-  metricsSummary[,countries[i]] <- c(accuracy, prevalence, sensitivity, specificity, precision,recall,f1)
+  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
 }
 accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
 prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
@@ -1274,11 +1143,11 @@ specificity <- sumFN/(sumFN+sumFP)
 precision <- sumTP/(sumTP+sumFP)
 recall <- sumTP/(sumTP+sumFN)
 f1 <-  2*(precision*recall)/(precision+recall)
-metricsSummary[,"All countries"] <- c(accuracy, prevalence, sensitivity, specificity, precision,recall,f1)
+metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
 metricsSummary
 ```
 
-```{r, warning = FALSE}
+```{r, echo=FALSE}
 confusion_matrix <- tibble("actual" = listTrue,
                      "prediction" = listPred)
 
@@ -1294,12 +1163,131 @@ plot_confusion_matrix(cfm,
 
 ## Prior sensitivity analysis
 
+```{r, echo=FALSE}
+# Compiling the pooled Stan model
+file_pooled_prior_sensitivity1 <- file.path("models/model_pooled_prior_sensitivity_1.stan")
+model_pooled_prior_sensitivity1 <- cmdstan_model(file_pooled_prior_sensitivity1)
+model_pooled_prior_sensitivity1$compile(quiet = FALSE)
 
+file_pooled_prior_sensitivity2 <- file.path("models/model_pooled_prior_sensitivity_2.stan")
+model_pooled_prior_sensitivity2 <- cmdstan_model(file_pooled_prior_sensitivity2)
+model_pooled_prior_sensitivity2$compile(quiet = FALSE)
+```
+
+The sampling running options
+```{r}
+  pooled_sampling_prior_sensitivity1 <- model_pooled_prior_sensitivity1$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
+  pooled_sampling_prior_sensitivity2 <- model_pooled_prior_sensitivity2$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
+```
+
+```{r, warning=FALSE, echo=FALSE}
+loo_loglike_pooled0 <- pooled_sampling$loo(variables="log_likelihood",r_eff=TRUE)
+loo_loglike_pooled1 <- pooled_sampling_prior_sensitivity1$loo(variables="log_likelihood",r_eff=TRUE)
+loo_loglike_pooled2 <- pooled_sampling_prior_sensitivity2$loo(variables="log_likelihood",r_eff=TRUE)
+
+cat("The elpd value of the pooled model 0 is\n")
+print(loo_loglike_pooled0$estimates[1][1])
+
+cat("The elpd value of the pooled model 1 is\n")
+print(loo_loglike_pooled1$estimates[1][1])
+
+cat("The elpd value of the pooled model 2 is\n")
+print(loo_loglike_pooled2$estimates[1][1])
+
+```
+
+```{r}
+loo_compare_pooled <- loo_compare(x = list(loo_loglike_pooled0=loo_loglike_pooled0, loo_loglike_pooled1=loo_loglike_pooled1, loo_loglike_pooled2=loo_loglike_pooled2))
+print(loo_compare_pooled)
+```
+
+We know that elpd_loo is the Bayesian LOO estimate of the expected log pointwise predictive density and is a sum of N individual pointwise log predictive densities. From the comparison table, elpd_diff is the difference in elpd_loo for two models. If more than two models are compared, the difference is computed relative to the model with highest elpd_loo, which is true in this case, as I am comparing three models
+
+The standard error of component-wise differences of elpd_loo (Eq 24 in VGG2017) between two models. This SE is smaller than the SE for individual models due to correlation (i.e., if some observations are easier and some more difficult to predict for all models)
+
+As quick rule: If elpd difference (elpd_diff in loo package) is less than 4, the difference is small. If elpd difference (elpd_diff in loo package) is larger than 4, then compare that difference to standard error of elpd_diff. When the difference (elpd_diff) is larger than 4, the number of observations is larger than 100 and the model is not badly misspecified then normal approximation and SE are quite reliable description of the uncertainty in the difference. Differences smaller than 4 are small and then the models have very similar predictive performance and it doesn’t matter if the normal approximation fails or SE is underestimated @akiLoo.
+
+SE assumes that normal approximation describes well the uncertainty related to the expected difference. Due to cross-validation folds not being independent, SE tends to be underestimated especially if the number of observations is small or the models are badly misspecified. The whole normal approximation tends to fail if the models are very similar or the models are badly misspecified. 
 
 
 # Model comparison
 
+```{r, echo=FALSE}
+loo_pooled <- separate_sampling$loo(variables="log_likelihood",r_eff=TRUE)
+cat("The PSIS-LOO elpd value of the separate model is\n")
+print(loo_separate$estimates[1][1])
 
+pareto_k_separate <- loo_separate$diagnostics$pareto_k
+cat("\nThe k-hat values of the separate model is\n")
+print(loo_separate)
+
+barplot(pareto_k_separate , main = "(separate model) k-hat diagnostics\n critical red line = 0.7", xlab = "k-hat values", ylab = "magnitude", ylim=c(0,1), col = "blue")
+abline(h=0.7, col="red", lwd=2)
+
+
+
+loo_pooled <- pooled_sampling$loo(variables="log_likelihood",r_eff=TRUE)
+cat("The PSIS-LOO elpd value of the pooled model is\n")
+print(loo_pooled$estimates[1][1])
+
+pareto_k_pooled <- loo_pooled$diagnostics$pareto_k
+cat("\nThe k-hat values of the pooled model is\n")
+print(loo_pooled)
+
+barplot(pareto_k_pooled, main = "(pooled model) k-hat diagnostics\n critical red line = 0.7", xlab = "k-hat values", ylab = "magnitude", ylim=c(0,1), col = "blue")
+abline(h=0.7, col="red", lwd=2)
+
+```
+```{r}
+df <- data.frame(pareto_k_separate = pareto_k_separate, 
+                 pareto_k_pooled = pareto_k_pooled)
+
+ggplot(df, aes(x = 1:length(pareto_k_separate), 
+               y = pareto_k_separate, 
+               fill = "pareto_k_separate")) + 
+  geom_bar(stat = "identity", width = 0.5) + 
+  geom_bar(aes(x = 1:length(pareto_k_pooled) + 0.5, 
+               y = pareto_k_pooled, 
+               fill = "pareto_k_pooled"), 
+          stat = "identity", width = 0.5) + 
+  scale_fill_manual(values = c("pareto_k_separate" = "purple", 
+                                "pareto_k_pooled" = "orange")) + 
+  labs(title = "PSIS k-values of the separate and pooled models", 
+       x = "Index", 
+       y = "Value", 
+       fill = "") + 
+  geom_hline(yintercept = 0.7, color = "darkred", size = 1) +
+  annotate("text", x = 40, y = 0.75, label = "bad k-values = 0.7", color = "darkred", hjust = 1, vjust = 0) +
+  geom_hline(yintercept = 1, color = "red", size = 1) +
+  annotate("text", x = 40, y = 1.05, label = "very bad k-values = 1", color = "red", hjust = 1, vjust = 0) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=15)) +
+  theme(legend.position = "bottom")
+```
+The ELPD is the theoretical expected log pointwise predictive density for a new dataset (Eq 1 in VGG2017), which can be estimated, e.g., using cross-validation. elpd_loo is the Bayesian LOO estimate of the expected log pointwise predictive density (Eq 4 in VGG2017) and is a sum of N individual pointwise log predictive densities.
+
+As quick rule: If elpd difference (elpd_diff in loo package) is less than 4, the difference is small (Sivula, Magnusson and Vehtari, 2020). If elpd difference (elpd_diff in loo package) is larger than 4, then compare that difference to standard error of elpd_diff (provided e.g. by loo package) (Sivula, Magnusson and Vehtari, 2020). 
+
+p_loo (effective number of parameters)
+p_loo is the difference between elpd_loo and the non-cross-validated log posterior predictive density. It describes how much more difficult it is to predict future data than the observed data. Asymptotically under certain regularity conditions, p_loo can be interpreted as the effective number of parameters. In well behaving cases p_loo < N and p_loo < p, where p is the total number of parameters in the model. p_loo > N or p_loo > p indicates that the model has very weak predictive capability and may indicate a severe model misspecification. See below for more on interpreting p_loo when there are warnings about high Pareto k diagnostic values
+
+p_loo is called the effective number of parameters and can be computed as the difference between elpd_loo and the non-cross-validated log posterior predictive density (Equations (4) and (3) in Vehtari, Gelman and Gabry (2017)). It is not needed for elpd_loo, but has diagnostic value. It describes how much more difficult it is to predict future data than the observed data. Asymptotically under certain regularity conditions, p_loo can be interpreted as the effective number of parameters. In well behaving cases p_loo <N and p_loo <p, where p is the total number of parameters in the model. p_loo >N or p_loo >p indicates that the model has very weak predictive capability.
+
+
+The Pareto k estimate is a diagnostic for Pareto smoothed importance sampling (PSIS), which is used to compute components of elpd_loo. In importance-sampling LOO (the full posterior distribution is used as the proposal distribution). The Pareto k diagnostic estimates how far an individual leave-one-out distribution is from the full distribution. If leaving out an observation changes the posterior too much then importance sampling is not able to give reliable estimate. If k<0.5, then the corresponding component of elpd_loo is estimated with high accuracy. If 0.5<k<0.7 the accuracy is lower, but still ok. If k>0.7, then importance sampling is not able to provide useful estimate for that component/observation. Pareto k is also useful as a measure of influence of an observation. Highly influential observations have high k values. Very high k values often indicate model misspecification, outliers or mistakes in data processing.
+
+Interpreting p_loo when Pareto k is large
+If k > 0.7 then we can also look at the p_loo estimate for some additional information about the problem:
+
+If p_loo << p (the total number of parameters in the model), then the model is likely to be misspecified. Posterior predictive checks (PPCs) are then likely to also detect the problem. Try using an overdispersed model, or add more structural information (nonlinearity, mixture model, etc.).
+
+If p_loo < p and the number of parameters p is relatively large compared to the number of observations (e.g., p>N/5), it is likely that the model is so flexible or the population prior so weak that it’s difficult to predict the left out observation (even for the true model). This happens, for example, in the simulated 8 schools (in VGG2017), random effect models with a few observations per random effect, and Gaussian processes and spatial models with short correlation lengths.
+
+If p_loo > p, then the model is likely to be badly misspecified. If the number of parameters p<<N, then PPCs are also likely to detect the problem. See the case study at https://avehtari.github.io/modelselection/roaches.html for an example. If p is relatively large compared to the number of observations, say p>N/5 (more accurately we should count number of observations influencing each parameter as in hierarchical models some groups may have few observations and other groups many), it is possible that PPCs won't detect the problem
+
+Online documentations: 
+FAQ: https://mc-stan.org/loo/articles/online-only/faq.html#elpd_interpretation
+Glossaries: https://mc-stan.org/loo/reference/loo-glossary.html
 
 # Discussion
 

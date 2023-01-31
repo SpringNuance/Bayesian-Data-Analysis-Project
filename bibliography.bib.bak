@@ -1,0 +1,60 @@
+
+@Article{hassan,
+AUTHOR = {Ul Hassan, Ietezaz and Ali, Raja Hashim and Ul Abideen, Zain and Khan, Talha Ali and Kouatly, Rand},
+TITLE = {Significance of Machine Learning for Detection of Malicious Websites on an Unbalanced Dataset},
+JOURNAL = {Digital},
+VOLUME = {2},
+YEAR = {2022},
+NUMBER = {4},
+PAGES = {501--519},
+URL = {https://www.mdpi.com/2673-6470/2/4/27},
+ISSN = {2673-6470},
+ABSTRACT = {It is hard to trust any data entry on online websites as some websites may be malicious, and gather data for illegal or unintended use. For example, bank login and credit card information can be misused for financial theft. To make users aware of the digital safety of websites, we have tried to identify and learn the pattern on a dataset consisting of features of malicious and benign websites. We treated the problem of differentiation between malicious and benign websites as a classification problem and applied several machine learning techniques, for example, random forest, decision tree, logistic regression, and support vector machines to this data. Several evaluation metrics such as accuracy, precision, recall, F1 score, and false positive rate, were used to evaluate the performance of each classification technique. Since the dataset was imbalanced, the machine learning models developed a bias during training toward a specific class of websites. Multiple data balancing techniques, for example, undersampling, oversampling, and SMOTE, were applied for balancing the dataset and removing the bias. Our experiments showed that after balancing the data, the random forest algorithm using the oversampling technique showed the best results in all evaluation metrics for the benign and malicious website feature dataset.},
+DOI = {10.3390/digital2040027}
+}
+
+@article{chen,
+title = {Feature set identification for detecting suspicious URLs using Bayesian classification in social networks},
+journal = {Information Sciences},
+volume = {289},
+pages = {133-147},
+year = {2014},
+issn = {0020-0255},
+doi = {https://doi.org/10.1016/j.ins.2014.07.030},
+url = {https://www.sciencedirect.com/science/article/pii/S0020025514007300},
+author = {Chia-Mei Chen and D.J. Guan and Qun-Kai Su},
+keywords = {Social network, Anomaly detection, Bayesian classification},
+abstract = {Social network services (SNSs) are increasing popular. Communicating with friends forms a social network that can be used to promptly share information with friends. In targeted attacks, SNSs are often used to collect personal information and craft attacks based on a specific user profile. Malware can be used to facilitate social relationship, sends messages containing malicious URLs, lures users to click on these URLs by employing social engineering techniques; then replicates through the social network over and over again. Because users are curious and trust in their friends, they typically click on malicious URLs without verification. In this study, a feature set is presented that combines the features of traditional heuristics and social networking. Furthermore, a suspicious URL identification system for use in social network environments is proposed based on Bayesian classification. The experimental results indicate that the proposed approach achieves a high detection rate.}
+}
+
+@article{singh,
+title = {Malicious and Benign Webpages Dataset},
+journal = {Data in Brief},
+volume = {32},
+pages = {106304},
+year = {2020},
+issn = {2352-3409},
+doi = {https://doi.org/10.1016/j.dib.2020.106304},
+url = {https://www.sciencedirect.com/science/article/pii/S2352340920311987},
+author = {A.K. Singh},
+keywords = {Web security, Malicious webpages, Machine learning, Deep learning, Malicious JavaScript},
+abstract = {Web Security is a challenging task amidst ever rising threats on the Internet. With billions of websites active on Internet, and hackers evolving newer techniques to trap web users, machine learning offers promising techniques to detect malicious websites. The dataset described in this manuscript is meant for such machine learning based analysis of malicious and benign webpages. The data has been collected from Internet using a specialized focused web crawler named MalCrawler [1]. The dataset comprises of various extracted attributes, and also raw webpage content including JavaScript code. It supports both supervised and unsupervised learning. For supervised learning, class labels for malicious and benign webpages have been added to the dataset using the Google Safe Browsing API.1 The most relevant attributes within the scope have already been extracted and included in this dataset. However, the raw web content, including JavaScript code included in this dataset supports further attribute extraction, if so desired. Also, this raw content and code can be used as unstructured data input for text-based analytics. This dataset consists of data from approximately 1.5 million webpages, which makes it suitable for deep learning algorithms. This article also provides code snippets used for data extraction and its analysis.}
+}
+
+@article{akiLoo,
+  doi = {10.48550/ARXIV.2008.10296},
+  
+  url = {https://arxiv.org/abs/2008.10296},
+  
+  author = {Sivula, Tuomas and Magnusson, Måns and Matamoros, Asael Alonzo and Vehtari, Aki},
+  
+  keywords = {Methodology (stat.ME), FOS: Computer and information sciences, FOS: Computer and information sciences},
+  
+  title = {Uncertainty in Bayesian Leave-One-Out Cross-Validation Based Model Comparison},
+  
+  publisher = {arXiv},
+  
+  year = {2020},
+  
+  copyright = {arXiv.org perpetual, non-exclusive license}
+}
