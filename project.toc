@@ -1,0 +1,29 @@
+\contentsline {section}{Introduction}{2}{section*.2}%
+\contentsline {subsection}{1. Central problem}{2}{section*.3}%
+\contentsline {subsection}{2. Motivation}{2}{section*.4}%
+\contentsline {subsection}{3. Main modeling idea}{2}{section*.5}%
+\contentsline {section}{Dataset}{3}{section*.6}%
+\contentsline {subsection}{1. Data description}{3}{section*.7}%
+\contentsline {subsection}{2. Data source and analysis difference}{4}{section*.8}%
+\contentsline {subsection}{3. Feature selection and data cleaning}{4}{section*.9}%
+\contentsline {section}{Separate model}{7}{section*.10}%
+\contentsline {subsection}{1. Model description}{7}{section*.11}%
+\contentsline {subsection}{2. Prior choice and justifications}{8}{section*.12}%
+\contentsline {subsection}{3. Stan code and running options}{8}{section*.13}%
+\contentsline {subsection}{4. Convergence diagnostics}{11}{section*.14}%
+\contentsline {subsection}{5. Posterior predictive checks}{12}{section*.15}%
+\contentsline {subsection}{6. Predictive performance assessment}{13}{section*.16}%
+\contentsline {subsection}{7. Prior sensitivity analysis}{14}{section*.17}%
+\contentsline {section}{Pooled model}{15}{section*.18}%
+\contentsline {subsection}{1. Model description}{15}{section*.19}%
+\contentsline {subsection}{2. Prior choice and justifications}{15}{section*.20}%
+\contentsline {subsection}{3. Stan code and running options}{15}{section*.21}%
+\contentsline {subsection}{4. Convergence diagnostics}{16}{section*.22}%
+\contentsline {subsection}{5. Posterior predictive checks}{17}{section*.23}%
+\contentsline {subsection}{6. Predictive performance assessment}{18}{section*.24}%
+\contentsline {subsection}{7. Prior sensitivity analysis}{18}{section*.25}%
+\contentsline {section}{Model comparison}{18}{section*.26}%
+\contentsline {section}{Discussion}{20}{section*.27}%
+\contentsline {section}{Conclusion}{20}{section*.28}%
+\contentsline {section}{Reflection}{20}{section*.29}%
+\contentsline {section}{References}{20}{section*.30}%

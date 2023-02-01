@@ -51,7 +51,7 @@ In order to protect against these threats, it is essential to detect malicious U
 
 ## 3. Main modeling idea
 
-The problem is the detection of malicious URLs, which means it is a classification task. As a result, I will heavily use the Beta distribution to model the probabilities for each feature and the Bernoulli distribution for modeling the likelihood of both labels and features. Based on intuition, the rate of malicious URLs is expected to vary depending on the countries and regions. For example, reputable countries in cybersecurity, such as Finland and UK, will host much fewer malicious domains/URLs. In contrast, others, such as Russia, China, and Vietnam, are less regulated and will have more harmful network content. From this belief, I decided to split the recorded URLs depending on the countries and proceeded to perform two Bayesian models: the separate model, where the rates of malicious URLs from each country are individually analyzed, and the pooled model, where all URLs are merged and treated as if they come from only one source. Both models are equally valid in that the separated model looks from the perspective of regional difference, while the pooled model looks from the common origin on the Domain Name System (DNS). Below is the illustration of malicious and benign URLs distribution among the recorded countries. 
+The problem is the detection of malicious URLs, which means it is a classification task. As a result, I will heavily use the Beta distribution to model the probabilities for each feature and the Bernoulli distribution for modeling the likelihood of both labels and features. Based on intuition, the rate of malicious URLs is expected to vary depending on the countries and regions. For example, reputable countries in cybersecurity, such as Finland and UK, will host much fewer malicious domains/URLs. In contrast, others, such as Russia, China, and Vietnam, are less regulated and will have more harmful network content. From this belief, I decided to split the recorded URLs depending on the countries and proceeded to perform two Bayesian models: the pooled model, where the rates of malicious URLs from each country are individually analyzed, and the pooled model, where all URLs are merged and treated as if they come from only one source. Both models are equally valid in that the pooledd model looks from the perspective of regional difference, while the pooled model looks from the common origin on the Domain Name System (DNS). Below is the illustration of malicious and benign URLs distribution among the recorded countries. 
 
 ```{r, include=FALSE}
 train_websites <- read.csv("websites/train_websites.csv")
@@ -118,7 +118,7 @@ head(train_websites_top_3)
 ## 2. Data source and analysis difference
 The source of the dataset can be found at:
 
-Data source description (@singh): https://data.mendeley.com/datasets/gdx3pkwp47/2
+Data source description: https://data.mendeley.com/datasets/gdx3pkwp47/2
 
 Data source download website: https://www.researchgate.net/publication/347936136_Malicious_and_Benign_Webpages_Dataset
 
@@ -347,6 +347,182 @@ keptColNames = c("label_bin", "geo_loc", "https_bin", "whois_bin", "js_len_bin",
 head(train_websites_top_3[, keptColNames])
 ```
 
+# Separate model
+
+## 1. Model description
+
+In the separate model, the dataset is partitioned into different countries, each with its own sets of malicious and benign URLs. All of the features and labels in this report are binary, which means they are modeled with Beta distribution as the prior for their probabilities and Bernoulli distribution for their likelihood. This is because the Beta distribution is the conjugate prior of the Bernoulli distribution. Intuitively, the Beta distribution can be understood as representing a distribution of probabilities; that is, it represents all the possible values of a probability when we are unsure of what that probability is. After modeling the probabilities, the Bernoulli distribution models the probability of observing a malicious URL (1) in a single trial, given a prior probability from the Beta distribution. 
+
+In the separate model, $k \in 1:K$ is the index of the country. For example, $k=1$ corresponds to China, $k=2$ is the USA, and $k=3$ is Germany. There are four probability parameters to be modeled in total. 
+$$
+\theta_{{https_k}} \sim Beta(\alpha,\beta) \Rightarrow https_k \sim Bernoulli(\theta_{{https_k}})
+$$
+$$
+\theta_{{whois_k}} \sim Beta(\alpha,\beta) \Rightarrow whois_k \sim Bernoulli(\theta_{{whois_k}})
+$$
+$$
+\theta_{{js\_len_k}} \sim Beta(\alpha,\beta) \Rightarrow js\_len_k \sim Bernoulli(\theta_{{js\_len_k}})
+$$
+$$
+\theta_{{js\_obf\_len_k}} \sim Beta(\alpha,\beta)\Rightarrow js\_obf\_len_k \sim Bernoulli(\theta_{{js\_obf\_len_k}})
+$$
+
+Besides the features themselves, the coefficients for each feature are all modeled with normal distributions. This is because the coefficients are likely to indicate direct/inverse proportion of the features with respect to the label. Therefore, it is useful to know their expected value and standard deviation. In the separate model, they are formulated as:
+$$
+intercept_k \sim Normal(\mu,\sigma) 
+$$
+$$
+c_{{https_k}} \sim Normal(\mu,\sigma), \quad c_{{whois_k}} \sim Normal(\mu,\sigma)
+$$
+$$
+c_{{js\_len_k}} \sim Normal(\mu,\sigma), \quad c_{{js\_obf\_len_k}} \sim Normal(\mu,\sigma) 
+$$
+The final important task is the formulation of the relationship between the features and the label. In this report, I use multiple linear regression of the features with an intercept to predict the labels. Additionally, the label is also binary (malicious/benign URL), which means it also follows a Bernoulli distribution, and its probability $\theta_{label}$ must be inside the range $[0, 1]$. A problem arises in the range of multiple linear regression: the regression prediction can yield any arbitrary value. Therefore, I used the inverse logit function to achieve this task. It is a sigmoid function that maps arbitrary real values back to the range [0, 1]. The larger the value, the closer to 1 it becomes. This function is also supported in Stan and usually accompanies the Bernoulli distribution. The inverse logit function is of the form
+$$
+inv\_logit(x) = \dfrac{1}{1 + exp(-x)}
+$$
+
+```{r, echo=FALSE}
+inv_logit <- function(vec){ return(1/(1+exp(-vec))) }
+```
+
+The label $y_k$ of malicious/benign URL now follows the Bernoulli distribution of the inverse logit function of the multiple linear regression.
+$$
+regression_k = intercept_k + c_{{https_k}}https_k + c_{{whois_k}}whois_k 
+$$
+$$
++ c_{{js\_len_k}}js\_len_k +  c_{{js\_obf\_len_k}}js\_obf\_len_k 
+$$
+$$
+\theta_{y_k} = inv\_logit(regression_k)
+$$
+$$
+y_k \sim Bernoulli(\theta_{y_k})
+$$
+
+```{r, echo = FALSE}
+bernoulli_logit <- function (intercept, js_len_coeff, js_obf_len_coeff, https_coeff, whois_coeff, js_len_truncated, js_obf_len_truncated, https_truncated, whois_truncated){
+  probability <-  inv_logit(intercept + js_len_coeff * js_len_truncated + js_obf_len_coeff * js_obf_len_truncated + https_coeff * https_truncated + whois_coeff * whois_truncated)
+  classification <- ifelse(probability >= 0.5, 1, 0)
+  return(classification)
+}
+```
+
+## 2. Prior choice and justifications
+
+Because the default protocol https now becomes the standard for secure websites, many domain registrar already provided https out of the box. This means https is much more popular than the insecure http version. By some statistics, https is used by 81.5% of all the websites (@w3techs). 
+
+Regarding the WHOIS registration, it is recorded that there are 1.24 billion websites with complete WHOIS registration (@chen). As a whole, there are currently around 1.7 billion websites hosted on WWW. Therefore, the ratio of complete WHOIS website is $1.24/1.7 \approx 0.73$
+
+For js_len and js_obf_len, I cannot find out any information about their priors, so I decided to use the priors based on the training dataset. 
+
+We can determine the $\alpha$ and $\beta$ parameters for the Beta distribution as
+$$
+\alpha = k + 1, \quad\beta = n - k + 1
+$$
+Where k is the number of successes and n is the number of trials. Because the ratio is between very large number, $\alpha$ and $\beta$ parameters are simply reduced to their respective ratios. Therefore, the priors for the probabilities of the features become:
+$$
+\theta_{{https_k}} \sim Beta(8,2), \quad \theta_{{whois_k}} \sim Beta(7,3), \quad 
+\theta_{{js\_len_k}} \sim Beta(1,2), \quad \theta_{{js\_obf\_len_k}} \sim Beta(1,2)
+$$
+
+For the coefficients, I set the mean of https and whois as -1 since they are inversely proportional to the label, while js_len and js_obf_len as 1 because they are directly proportional. The standard deviation is weakly informative. Regarding the intercept, I expect it to be around 0, and its deviation is also weakly informative. In brief, the priors for the coefficients are:
+$$
+intercept_k \sim Normal(0,20), \quad c_{https_k} \sim Normal(-1,10), \quad c_{whois_k} \sim Normal(-1,10) 
+$$
+$$
+c_{js\_len_k} \sim Normal(1,10), \quad c_{js\_obf\_len_k} \sim Normal(1,10) 
+$$
+
+## 3. Stan code and running options
+The Stan code for the separate model:
+```{r, echo = TRUE, results = 'hide'}
+"
+data {
+  int<lower=1> Nmax; // Number of maximum URLs among all countries (training)
+  int<lower=1> Mmax; // Number of maximum URLs among all countries (testing)
+  int<lower=1> K; // Number of countries
+  array[K] int<lower=1> N_list; // Number of URLs of each country (training)
+  array[K] int<lower=1> M_list; // Number of URLs of each country (testing)
+  // The training features
+  array[K, Nmax] int<lower=0,upper=1> js_len_list;
+  array[K, Nmax] int<lower=0,upper=1> js_obf_len_list;
+  array[K, Nmax] int<lower=0,upper=1> https_list;
+  array[K, Nmax] int<lower=0,upper=1> whois_list;
+  // The testing predicting features
+  array[K, Mmax] int<lower=0,upper=1> js_len_pred_list;
+  array[K, Mmax] int<lower=0,upper=1> js_obf_len_pred_list;
+  array[K, Mmax] int<lower=0,upper=1> https_pred_list;
+  array[K, Mmax] int<lower=0,upper=1> whois_pred_list;
+  // label for each URL: benign(0) or malicious(1)
+  array[K, Nmax] int<lower=0,upper=1> label_list; 
+}
+
+parameters {
+  array[K] real<lower=0, upper=1> theta_js_len; // probability for js_len
+  array[K] real<lower=0, upper=1> theta_js_obf_len; // probability for js_obf_len
+  array[K] real<lower=0, upper=1> theta_https; // probability for https
+  array[K] real<lower=0, upper=1> theta_whois; // probability for whois
+  array[K] real js_len_coeff; // Slope coefficient for js_len
+  array[K] real js_obf_len_coeff; // Slope coefficient for js_obf_len
+  array[K] real https_coeff; // Slope coefficient for https_coeff
+  array[K] real whois_coeff; // Slope coefficient for whois_coeff
+  array[K] real intercept; // Intercept coefficient
+}
+
+model {
+    // Prior probabilities of the features
+    for (k in 1:K){
+        theta_js_len[k] ~ beta(1,2);
+        theta_js_obf_len[k] ~ beta(1,2);
+        theta_https[k] ~ beta(8,2);
+        theta_whois[k] ~ beta(7,3);
+    }
+    // likelihood for the features
+    for (k in 1:K){
+        js_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_len[K]);
+        js_obf_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_obf_len[K]);
+        https_list[k, 1:N_list[k]] ~ bernoulli(theta_https[K]);
+        whois_list[k, 1:N_list[k]] ~ bernoulli(theta_whois[K]);     
+    }
+    // priors of the coefficients
+    for (k in 1:K){
+       js_len_coeff[k] ~ normal(1,10);
+       js_obf_len_coeff[k] ~ normal(1,10);
+       https_coeff[k]  ~ normal(-1,10);
+       whois_coeff[k] ~ normal(-1,10);
+       intercept[k] ~ normal(0,20);         
+    }
+    // Modelling of the label based on bernoulli logistic regression by 
+    // multiple variable linear regression 
+    for (k in 1:K){
+      for (i in 1:N_list[k]){
+        label_list[k, i] ~ bernoulli(inv_logit(intercept[k] 
+            + https_coeff[k] * https_list[k, i]
+            + whois_coeff[k] * whois_list[k, i] 
+            + js_len_coeff[k] * js_len_list[k, i] 
+            + js_obf_len_coeff[k] * js_obf_len_list[k, i]));
+      }
+    }
+}
+
+generated quantities {
+    array[Nmax] real log_likelihood; 
+    for (k in 1:K) {
+      if (N_list[k] == Nmax){
+        for (i in 1:Nmax){
+          log_likelihood[i] = bernoulli_lpmf(label_list[k, i] | inv_logit(intercept[k] 
+            + https_coeff[k] * https_list[k, i] 
+            + whois_coeff[k] * whois_list[k, i] 
+            + js_len_coeff[k] * js_len_list[k, i] 
+            + js_obf_len_coeff[k] * js_obf_len_list[k, i]));
+        }
+      }
+    }
+}
+
+"
+```
 
 ```{r, echo=FALSE}
 
@@ -474,7 +650,8 @@ label_test_list <- map(label_test_list, function(x) {return(c(x, rep(0, Mmax - l
 
 ```
 
-```{r, echo=FALSE}
+* Next, I prepare the data to be passed to the Stan separate model
+```{r}
 stan_data <- list(
   Nmax = Nmax,
   Mmax = Mmax,
@@ -493,57 +670,811 @@ stan_data <- list(
 )
 ```
 
+```{r, echo=FALSE}
+# Compiling the separate Stan model
+file_separate <- file.path("models/model_separate.stan")
+model_separate <- cmdstan_model(file_separate)
+model_separate$compile(quiet = FALSE)
+```
 
-# Separate model
+* This is the sampling running options
 
-## 1. Model description
+The sampling statement has 4 chains, which is the default number of chains that yield meaningful diagnostics such as $\hat{R}$ and ESS. The number of warm-up iterations is only 1000 to speed up the running time, since I see no significant improvement in the model performance when the warm-up iterations is 2000. Finally, the number of sampling iterations is chosen as the default number, which is 2000 iterations. 
 
-## 2. Prior choice and justifications
-
-## 3. Stan code and running options
-
+```{r}
+  separate_sampling <- model_separate$sample(data = stan_data, chains=4, 
+                    iter_warmup = 1000, iter_sampling = 2000, refresh=0)
+```
 ## 4. Convergence diagnostics
+
+After running the sampling, I proceeded to plot the chains to verify the model convergence for some of the coefficients from a certain country. In this case, I choose USA as this country has the most number of URLs. The sampling output above does not have any errors, suggesting there are no serious errors in the model.
+
+```{r, include=FALSE}
+# , fig.width=6, fig.height=3
+# Set up the plotting grid
+par(mfrow = c(3,5))
+
+row_labels <- c("intercept", "HTTPS coefficient", "WHOIS coefficient","JS length coefficient","JS obf. length coefficient")
+row_names <- c("intercept","https_coeff","whois_coeff","js_len_coeff","js_obf_len_coeff")
+
+#separate_sampling$summary()
+# Loop through the countries
+for (j in 1:3){
+  for(i in 1:5){
+      # Create the subplot
+      hist(separate_sampling$draws(paste(row_names[i],"[",j,"]", sep="")),main = countries[j], xlab=row_labels[i])
+      # Add the country name to the top of the column
+      mtext(countries[j], side = 3, line = 0.2, outer = TRUE)
+    }
+}
+```
+
+```{r, echo=FALSE, fig.align='center', fig.width=9, fig.height=4}
+plotConvergence <- function (draws, paramName){
+  chain1 <- as.vector(draws[1:2000, 1])
+  chain2 <- as.vector(draws[2001:4000, 1])
+  chain3 <- as.vector(draws[4001:6000, 1])
+  chain4 <- as.vector(draws[6001:8000, 1])
+  iters = length(chain1)
+  indices <- 1:iters
+  data <- data.frame(indices, chain1, chain2, 
+                              chain3, chain4)
+  
+  p <- ggplot(data, aes(x=indices)) +
+    ggtitle(paste("Separate model (USA)\nConvergence of",paramName,"\n",iters,"sampling, 1000 warm-up iterations")) +
+    xlab("iteration") + 
+    ylab(paramName) +
+    theme(plot.title = element_text(hjust = 0.5, size=10), legend.position = "right") +
+    geom_line(aes(y = chain1, color = "chain1")) + 
+    geom_line(aes(y = chain2, color = "chain2")) +
+    geom_line(aes(y = chain3, color = "chain3")) + 
+    geom_line(aes(y = chain4, color = "chain4")) +
+    scale_color_manual(name = "MCMC", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black"))
+  return(p)
+}
+
+intercept_draws <- separate_sampling$draws("intercept[2]", format = "matrix")
+p1 <- plotConvergence(intercept_draws, "intercept")
+
+https_draws <- separate_sampling$draws("https_coeff[2]", format = "matrix")
+p2 <- plotConvergence(https_draws, "https coefficient")
+
+grid.arrange(p1, p2, ncol = 2)
+# whois_draws <- separate_sampling$draws("whois_coeff[1]", format = "matrix")
+# plotConvergence(whois_draws, "whois coefficient")
+
+#js_len_draws <- separate_sampling$draws("js_len_coeff[1]", format = "matrix")
+#plotConvergence(js_len_draws, "JS length coefficient")
+
+#js_obf_len_draws <- separate_sampling$draws("js_obf_len_coeff[1]", format = "matrix")
+#plotConvergence(js_obf_len_draws, "JS obfuscated length coefficient")
+```
+
+* From the figure above, it appears that all MCMC chains did not diverge. However, convergence verification via visualization is not enough. This is the HMC specific convergence diagnostics of the sampling process:
+
+```{r, eval=TRUE, include=TRUE}
+separate_sampling$diagnostic_summary()
+```
+The number of divergences for all 4 chains are 0, suggesting that all of the chains have successfully converged. This means the separate model is not misconfigured or having wrong constrains on the variables.
+
+Additionally, the number of iterations exceeding the maximum tree depth are also zero for all chains. Warnings about hitting the maximum treedepth are not as serious as other warnings. While divergent transitions, high R-hat and low ESS are a validity concern, hitting the maximum treedepth is an efficiency concern. Therefore, this separate model seems to be also efficient. 
+
+The diagnostic ebfmi stands for energy Bayesian fraction of missing information. It is particularly useful for diagnosing poorly chosen kinetic energies. Low values of ebfmi $(\leq 0.3)$ are considered problematic (@betancourt). As observed from the data, all four chains are all above 0.8, meaning that the chains have well chosen kinetic energies.
+
+Documentation source at: https://mc-stan.org/misc/warnings.html
+
+* Next, I analyze the $\hat{R}$-convergence diagnostics and the effective sample size ESS
+
+```{r, echo=FALSE, fig.align='center', fig.width=8, fig.height=3 }
+summaryDiagnostics = data.frame()
+for (i in 1:K){
+  summaryDiagnosticsCountry <- separate_sampling$summary(c(paste("intercept[",i,"]", sep=""), paste("https_coeff[",i,"]", sep=""),paste("whois_coeff[",i,"]", sep=""),paste("js_len_coeff[",i,"]", sep=""),paste("js_obf_len_coeff[",i,"]", sep="")))[, c("variable", "rhat", "ess_bulk", "ess_tail")]
+  
+ summaryDiagnostics <- rbind(summaryDiagnostics, summaryDiagnosticsCountry)
+ 
+}
+summaryDiagnostics$variable <- 1:15 
+summaryDiagnostics <- summaryDiagnostics %>% rename(index = variable)
+
+p1 <- ggplot(summaryDiagnostics, aes(x = index, y = rhat)) +
+  geom_point() +
+  geom_hline(yintercept = 1.05, color = "red") +
+  annotate("text", x = 15, y = 1.055, label = "critical Rhat value = 1.05", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Rhat values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Rhat values\n of all coefficients")
+
+p2 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_bulk)) +
+  geom_point() +
+  geom_hline(yintercept = 8000, color = "red") +
+  annotate("text", x = 10, y = 7800, label = "Samples = 8000", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Bulk ESS values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Bulk effective sample size\n of all coefficients")
+
+p3 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_tail)) +
+  geom_point() +
+  geom_hline(yintercept = 8000, color = "red") +
+  annotate("text", x = 10, y = 7800, label = "Samples = 8000", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Tail ESS values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Tail effective sample size\n of all coefficients")
+
+grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+
+$\hat{R}$-convergence diagnostics compares the between- and within-chain estimates for model parameters and other univariate quantities of interest. It is recommended to run at least four MCMC chains and only fully trust the sample if $\hat{R}$ values are less than 1.05. High $\hat{R}$ means that the chains have not mixed well and so there is not a good reason to think of them as them being fully representative of the posterior. Fortunately, from the figure above, all of the $\hat{R}$ values are very close to 1, suggesting that the samples in the separate model are representative of the posterior. 
+
+Roughly speaking, the effective sample size (ESS) of a quantity of interest captures how many independent draws contain the same amount of information as the dependent sample obtained by the MCMC algorithm. The higher the ESS the better. There are two types of ESS. The Bulk-ESS estimates the sampling efficiency for location summaries such as mean and median, while the Tail-ESS computes the minimum of the effective sample sizes (ESS) of the 5% and 95% quantiles. From the figure above, the Bulk-ESS has very high values, while Tail-ESS have moderate values. Overall, this separate model has a sampling that represents adequately effectiveness among all iterations.  
+
+Documentation source at: https://mc-stan.org/misc/warnings.html
 
 ## 5. Posterior predictive checks
 
+After convergence analysis, it is time to test the model performance on the training data. First, I calculated the mean of each coefficients from the sampling. Then, I plugged them into the equation bernoulli_logit, where the multiple linear regression is calculated and its inverse logit is obtained according to the formula of the label model $y_k$ mentioned above in part (1). Finally, if the probability is larger than 0.5, the URL is determined as malicious, while those smaller than 0.5 will be considered benign URLs. 
+
+```{r}
+inv_logit <- function(vec){ return(1/(1+exp(-vec))) }
+
+bernoulli_logit <- function (intercept, js_len_coeff, js_obf_len_coeff, https_coeff, whois_coeff, 
+                      js_len_truncated, js_obf_len_truncated, https_truncated, whois_truncated){
+  probability <-  inv_logit(intercept + js_len_coeff * js_len_truncated +
+                                js_obf_len_coeff * js_obf_len_truncated + 
+                                          https_coeff * https_truncated +  
+                                          whois_coeff * whois_truncated)
+  classification <- ifelse(probability >= 0.5, 1, 0)
+  return(classification)
+}
+```
+
+```{r, echo=FALSE}
+metricsName <- c("Accuracy", "Precision", "Recall", "F1")
+metricsSummary <- data.frame(Metrics=metricsName)
+metricsSummary$Accuracy <- NULL
+metricsSummary$Precision <- NULL
+metricsSummary$Recall <- NULL
+metricsSummary$F1 <- NULL
+#print(metricsSummary)
+sumTP <- 0
+sumTN <- 0
+sumFP <- 0
+sumFN <- 0
+listTrue <- c()
+listPred <- c()
+for (k in 1:K){
+  #predicted_train = c()
+  #for (i in 1:N_list[[k]]){
+  #  draws <- separate_sampling$draws(paste("label_train_pred[",k,",",i,"]", sep=""), format = "matrix")
+  #  predicted_train <- c(predicted_train, as.vector(draws[1, ]))
+  #}
+
+  #true_train = label_list[[k]][1:N_list[[k]]]
+  #confusion_matrix <- table(predicted_train, true_train)
+
+  true_train = label_list[[k]][1:N_list[[k]]]
+  
+  js_len_truncated <- js_len_list[[k]][1:N_list[[k]]]
+  js_obf_len_truncated <- js_obf_len_list[[k]][1:N_list[[k]]]
+  https_truncated <- https_list[[k]][1:N_list[[k]]]
+  whois_truncated <- whois_list[[k]][1:N_list[[k]]]
+  
+  intercept <- mean(as.vector(separate_sampling$draws(paste("intercept[",k,"]",sep=""), format = "matrix")[, 1]))
+  js_len_coeff <- mean(as.vector(separate_sampling$draws(paste("js_len_coeff[",k,"]",sep=""), format = "matrix")[, 1]))
+  js_obf_len_coeff <- mean(as.vector(separate_sampling$draws(paste("js_obf_len_coeff[",k,"]",sep=""), format = "matrix")[, 1]))
+  https_coeff <- mean(as.vector(separate_sampling$draws(paste("https_coeff[",k,"]",sep=""), format = "matrix")[, 1]))
+  whois_coeff <- mean(as.vector(separate_sampling$draws(paste("whois_coeff[",k,"]",sep=""), format = "matrix")[, 1]))
+ 
+    predicted_train <- bernoulli_logit(intercept, js_len_coeff, js_obf_len_coeff, https_coeff, whois_coeff, js_len_truncated, js_obf_len_truncated, https_truncated, whois_truncated)
+   
+  listTrue <- c(listTrue, true_train)
+  listPred <- c(listPred, predicted_train)
+  confusion_matrix <- table(predicted_train, true_train)
+  TP <- confusion_matrix[2,2]
+  TN <- confusion_matrix[1,1]
+  FP <-confusion_matrix[1,2]
+  FN <-confusion_matrix[2,1]
+  #cat(TP,TN,FP,FN)
+  sumTP <- sumTP + TP
+  sumTN <- sumTN + TN
+  sumFP <- sumFP + FP
+  sumFN <- sumFN + FN
+  accuracy <- (TP+TN)/(TP+FP+FN+TN) 
+  precision <- TP/(TP+FP)
+  recall <- TP/(TP+FN)
+  f1 <-  2*(precision*recall)/(precision+recall)
+  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
+}
+accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
+precision <- sumTP/(sumTP+sumFP)
+recall <- sumTP/(sumTP+sumFN)
+f1 <-  2*(precision*recall)/(precision+recall)
+metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
+metricsSummary
+```
+
+There are four main metrics in classification problem, which are accuracy, precision, recall and F1 score. Accuracy tells how often the model correctly classify benign and malicious URLs. On the other hand, precision is how good the model is at predicting a malicious URL, while recall tells how many times the model was able to detect a malicious URL. In this case, recall is more important than precision when the cost of blocking a malicious URL is low, but the cost of being attacked or phished by malicious URLs is seriously grave. Finally, F1 score can be interpreted as a measure of overall model performance from 0 to 1, where 1 is the best. Specifically, F1 score can be interpreted as the model's balanced ability to both capture positive cases (recall) and be accurate with the cases it does capture (precision). 
+
+From the dataframe result, it can be seen that all of the metrics are perfect for China and Germany since they have a relatively small number of training data. On the other hand, USA has a very high accuracy but a little lower precision. However, this does not matter much as the recall is perfect, since mistakenly blocking a benign URL is not as costly as allowing attacks from malicious URLs. 
+
+To visualize, this is the confusion matrix in prediction for all countries: 
+```{r, echo=FALSE, warning = FALSE, fig.align='center', fig.width=2.5, fig.height = 2.5}
+confusion_matrix <- tibble("actual" = listTrue,
+                     "prediction" = listPred)
+
+
+basic_table <- table(confusion_matrix)
+cfm <- as_tibble(basic_table)
+plot_confusion_matrix(cfm, 
+                      target_col = "actual", 
+                      prediction_col = "prediction",
+                      counts_col = "n", palette = "Oranges")
+```
+
+From the confusion matrix, most of the predictions lie on True Positive and False Negative, which is what expected from a classification model. There is only one wrong prediction. In summary, the separate model performs very well for all countries, especially for the perfect recall metric.  
+
 ## 6. Predictive performance assessment
 
+For the testing data, I apply the same procedure like part (5) above. Normally in machine learning field, the number of testing datapoints is more than the testing ones. However in this report, I experiment with my model to see if the model can generalize well over a larger testing data, which is 250 datapoints compared to only 120 training ones. This is the classification metric results
+
+```{r, echo=FALSE}
+metricsName <- c("Accuracy", "Precision", "Recall", "F1")
+metricsSummary <- data.frame(Metrics=metricsName)
+metricsSummary$Accuracy <- NULL
+metricsSummary$Precision <- NULL
+metricsSummary$Recall <- NULL
+metricsSummary$F1 <- NULL
+#print(metricsSummary)
+sumTP <- 0
+sumTN <- 0
+sumFP <- 0
+sumFN <- 0
+listTrue <- c()
+listPred <- c()
+for (k in 1:K){
+  # predicted_test = c()
+  # for (i in 1:M_list[[k]]){
+  #  draws <- separate_sampling$draws(paste("label_test_pred[",k,",",i,"]", sep=""), format = "matrix")
+  #  predicted_test <- c(predicted_test, as.vector(draws[1, ]))
+  # }
+  true_test = label_test_list[[k]][1:M_list[[k]]]
+  
+  js_len_truncated <- js_len_test_list[[k]][1:M_list[[k]]]
+  js_obf_len_truncated <- js_obf_len_test_list[[k]][1:M_list[[k]]]
+  https_truncated <- https_test_list[[k]][1:M_list[[k]]]
+  whois_truncated <- whois_test_list[[k]][1:M_list[[k]]]
+  
+  intercept <- mean(as.vector(separate_sampling$draws(paste("intercept[",k,"]",sep=""), format = "matrix")[, 1]))
+  js_len_coeff <- mean(as.vector(separate_sampling$draws(paste("js_len_coeff[",k,"]",sep=""), format = "matrix")[, 1]))
+  js_obf_len_coeff <- mean(as.vector(separate_sampling$draws(paste("js_obf_len_coeff[",k,"]",sep=""), format = "matrix")[, 1]))
+  https_coeff <- mean(as.vector(separate_sampling$draws(paste("https_coeff[",k,"]",sep=""), format = "matrix")[, 1]))
+  whois_coeff <- mean(as.vector(separate_sampling$draws(paste("whois_coeff[",k,"]",sep=""), format = "matrix")[, 1]))
+  
+  predicted_test <- bernoulli_logit(intercept, js_len_coeff, js_obf_len_coeff, https_coeff, whois_coeff, js_len_truncated, js_obf_len_truncated, https_truncated, whois_truncated)
+  
+  confusion_matrix <- table(predicted_test, true_test)
+  listTrue <- c(listTrue, true_test)
+  listPred <- c(listPred, predicted_test)
+
+  TP <- confusion_matrix[2,2]
+  TN <- confusion_matrix[1,1]
+  FP <-confusion_matrix[1,2]
+  FN <-confusion_matrix[2,1]
+
+  sumTP <- sumTP + TP
+  sumTN <- sumTN + TN
+  sumFP <- sumFP + FP
+  sumFN <- sumFN + FN
+  accuracy <- (TP+TN)/(TP+FP+FN+TN) 
+  precision <- TP/(TP+FP)
+  recall <- TP/(TP+FN)
+  f1 <-  2*(precision*recall)/(precision+recall)
+  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
+}
+accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
+prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
+sensitivity <- sumTP/(sumTP+sumFN)
+specificity <- sumFN/(sumFN+sumFP)
+precision <- sumTP/(sumTP+sumFP)
+recall <- sumTP/(sumTP+sumFN)
+f1 <-  2*(precision*recall)/(precision+recall)
+metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
+metricsSummary
+```
+
+```{r, echo=FALSE, warning = FALSE, fig.align='center', fig.width=2.5, fig.height = 2.5}
+confusion_matrix <- tibble("actual" = listTrue,
+                     "prediction" = listPred)
+
+
+basic_table <- table(confusion_matrix)
+cfm <- as_tibble(basic_table)
+plot_confusion_matrix(cfm, 
+                      target_col = "actual", 
+                      prediction_col = "prediction",
+                      counts_col = "n", palette = "Oranges")
+```
+
+It appears that the separate model also performs well in its prediction of malicious URLs, since all metrics are well above 0.9 and there is only one wrongly classified URL. \
+=> The separate model predicts malicious URL with great accuracy for both training and testing data
+
 ## 7. Prior sensitivity analysis
+To analyze the prior sensitivity analysis in the separate model, I only change the prior for the probabilities, but keep the priors for the coefficients the same. In these new priors, all probabilities are modeled with uniform Beta distribution, which are:
+$$
+\theta_{{https_k}} \sim Beta(1,1), \quad \theta_{{whois_k}} \sim Beta(1,1), \quad 
+\theta_{{js\_len_k}} \sim Beta(1,1), \quad \theta_{{js\_obf\_len_k}} \sim Beta(1,1)
+$$
+Flat uniform prior provides no information about the past data and is not recommended in Bayesian inference. If there is no need to account for the past data, the frequentist approaches such as supervised and unsupervised methods are much better than Bayesian approach. 
+```{r, echo=FALSE}
+# Compiling the separate Stan model
+file_separate_prior1 <- file.path("models/model_separate_prior_sensitivity_1.stan")
+model_separate_prior1 <- cmdstan_model(file_separate_prior1)
+model_separate_prior1$compile(quiet = FALSE)
+```
+
+```{r, include=FALSE}
+separate_sampling_prior1 <- model_separate_prior1$sample(data = stan_data, chains=4, 
+                                  iter_warmup = 1000, iter_sampling = 2000, refresh=0)
+```
+
+To compare two models using LOO-CV, I need to calculate the log likelihood of the samplings. 
+```{r, warning=FALSE}
+loo_loglike_separate0 <- separate_sampling$loo(variables="log_likelihood",r_eff=TRUE)
+loo_loglike_separate1 <- separate_sampling_prior1$loo(variables="log_likelihood",r_eff=TRUE)
+```
+
+Now I use LOO-CV method to compare the separate models with uniform and non-uniform priors:
+```{r}
+loo_compare(x = list(loo_loglike_separate0=loo_loglike_separate0,
+                     loo_loglike_separate1=loo_loglike_separate1))
+```
+In LOO-CV model comparison, if the elpd difference is less than 4, the models have very similar predictive performance. If elpd difference is larger than 4, then we need to compare that difference to the standard error of elpd_diff (se_diff). When the difference (elpd_diff) is larger than 4, if the number of observations is larger than 100 and the model is not badly mis-specified, then the normal approximation and SE are quite reliable description of the uncertainty in the difference (@akiLoo). Differences smaller than 4 are small, which means the models have very similar predictive performance. In this case, the elpd_diff is only -0.2, while the standard error difference is also 0.2. In other words, the separate model is quite insensitive to different priors because both elpd_diff and se_diff are smaller than 4. 
+
 
 # Pooled model
 
 ## 1. Model description
 
+In the pooled model, the URLs are treated as if they originate from the same source, which is the Domain Name Servers distributed around the world. This model thereby ignores the country in which the servers are established and thus, it is on the absolute opposite spectrum of separate model. In the pooled model, the probability and coefficients parameters are shared among all countries. This means all countries have the same regression model. However, aside from this difference, the pooled model is essentially following the same workflow as the separate model, which is already documented carefully above. Therefore, I will focus on reporting results of the pooled model without terminology and workflow explanations. 
+
+
+
 ## 2. Prior choice and justifications
 
-## 3. Stan code and running options
+The priors of the probability and coefficient parameters in the pooled model are the same as the separate model, where explanations have been provided before. This time there is no longer the $k$ index.
+$$
+\theta_{{https}} \sim Beta(8,2), \quad \theta_{{whois}} \sim Beta(7,3), \quad 
+\theta_{{js\_len}} \sim Beta(1,2), \quad \theta_{{js\_obf\_len}} \sim Beta(1,2)
+$$
+$$
+intercept \sim Normal(0,20), \quad c_{https} \sim Normal(-1,10), \quad c_{whois} \sim Normal(-1,10) 
+$$
+$$
+c_{js\_len} \sim Normal(1,10), \quad c_{js\_obf\_len} \sim Normal(1,10) 
+$$
 
+## 3. Stan code and running options
+The Stan code for the pooled model. Only the model code block differs. The rest code blocks are similar to the separate model
+```{r, echo = TRUE, results = 'hide'}
+"
+model {
+    // Prior probabilities of the features
+    theta_js_len ~ beta(1,2);
+    theta_js_obf_len ~ beta(1,2);
+    theta_https ~ beta(8,2);
+    theta_whois ~ beta(7,3);
+    // likelihood for the features
+    for (k in 1:K){
+        js_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_len);
+        js_obf_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_obf_len);
+        https_list[k, 1:N_list[k]] ~ bernoulli(theta_https);
+        whois_list[k, 1:N_list[k]] ~ bernoulli(theta_whois);     
+    }
+    // priors of the coefficients
+    js_len_coeff ~ normal(1,10);
+    js_obf_len_coeff ~ normal(1,10);
+    https_coeff  ~ normal(-1,10);
+    whois_coeff ~ normal(-1,10);
+    intercept ~ normal(0,20);        
+    // Modelling of the label based on bernoulli logistic regression by 
+    // multiple variable linear regression 
+    for (k in 1:K){
+      for (i in 1:N_list[k]){
+        label_list[k, i] ~ bernoulli(inv_logit(intercept
+            + https_coeff * https_list[k, i] 
+            + whois_coeff * whois_list[k, i] 
+            + js_len_coeff * js_len_list[k, i] 
+            + js_obf_len_coeff * js_obf_len_list[k, i]));
+      }
+    }
+}
+"
+```
+
+```{r, echo=FALSE}
+# Compiling the pooled Stan model
+file_pooled <- file.path("models/model_pooled.stan")
+model_pooled <- cmdstan_model(file_pooled)
+model_pooled$compile(quiet = FALSE)
+```
+
+* This is the sampling running options, which is the same as the separate model. 
+
+```{r}
+pooled_sampling <- model_pooled$sample(data = stan_data, chains=4, 
+                    iter_warmup = 1000, iter_sampling = 2000, refresh=0)
+```
 ## 4. Convergence diagnostics
 
-## 5.Posterior predictive checks
+The sampling output above does not have any errors, suggesting there are no serious errors in the model. I proceeded to plot the chains to verify the model convergence for the pooled model
+```{r, echo=FALSE, fig.align='center', fig.width=9, fig.height=3.5}
+plotConvergence <- function (draws, paramName){
+  chain1 <- as.vector(draws[1:2000, 1])
+  chain2 <- as.vector(draws[2001:4000, 1])
+  chain3 <- as.vector(draws[4001:6000, 1])
+  chain4 <- as.vector(draws[6001:8000, 1])
+  iters = length(chain1)
+  indices <- 1:iters
+  data <- data.frame(indices, chain1, chain2, 
+                              chain3, chain4)
+  
+  p <- ggplot(data, aes(x=indices)) +
+    ggtitle(paste("Pooled model\nConvergence of",paramName,"\n",iters,"sampling, 1000 warm-up iterations")) +
+    xlab("iteration") + 
+    ylab(paramName) +
+    theme(plot.title = element_text(hjust = 0.5, size=10), legend.position = "right") +
+    geom_line(aes(y = chain1, color = "chain1")) + 
+    geom_line(aes(y = chain2, color = "chain2")) +
+    geom_line(aes(y = chain3, color = "chain3")) + 
+    geom_line(aes(y = chain4, color = "chain4")) +
+    scale_color_manual(name = "MCMC", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black"))
+  return(p)
+}
+
+intercept_draws <- pooled_sampling$draws("intercept", format = "matrix")
+p1 <- plotConvergence(intercept_draws, "intercept")
+
+https_draws <- pooled_sampling$draws("https_coeff", format = "matrix")
+p2 <- plotConvergence(https_draws, "https coefficient")
+
+grid.arrange(p1, p2, ncol = 2)
+# whois_draws <- pooled_sampling$draws("whois_coeff[1]", format = "matrix")
+# plotConvergence(whois_draws, "whois coefficient")
+
+#js_len_draws <- pooled_sampling$draws("js_len_coeff[1]", format = "matrix")
+#plotConvergence(js_len_draws, "JS length coefficient")
+
+#js_obf_len_draws <- pooled_sampling$draws("js_obf_len_coeff[1]", format = "matrix")
+#plotConvergence(js_obf_len_draws, "JS obfuscated length coefficient")
+```
+
+* It appears that all MCMC chains converge. Examining the HMC specific convergence diagnostics:
+```{r, eval=TRUE, include=TRUE}
+pooled_sampling$diagnostic_summary()
+```
+The number of divergences for all 4 chains are 0, suggesting that all of the chains have successfully converged. This means the pooled model is not misconfigured or having wrong constrains on the variables.
+
+Additionally, the number of iterations exceeding the maximum tree depth are also zero for all chains. Therefore, this pooled model seems to be also efficient. 
+
+For ebfmi, all four chains are all above 0.8, meaning that the chains have well chosen kinetic energies.
+
+* Next, I analyze the $\hat{R}$-convergence diagnostics and the effective sample size ESS
+
+```{r, echo=FALSE, fig.align='center', fig.width=8, fig.height=3 }
+summaryDiagnostics = data.frame()
+for (i in 1:K){
+  summaryDiagnosticsCountry <- pooled_sampling$summary(c("intercept","https_coeff",
+    "whois_coeff","js_len_coeff","js_obf_len_coeff"))[, c("variable", "rhat", "ess_bulk", "ess_tail")]
+ summaryDiagnostics <- rbind(summaryDiagnostics, summaryDiagnosticsCountry)
+ 
+}
+summaryDiagnostics$variable <- 1:15 
+summaryDiagnostics <- summaryDiagnostics %>% rename(index = variable)
+
+p1 <- ggplot(summaryDiagnostics, aes(x = index, y = rhat)) +
+  geom_point() +
+  geom_hline(yintercept = 1.05, color = "red") +
+  annotate("text", x = 15, y = 1.055, label = "critical Rhat value = 1.05", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Rhat values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Rhat values\n of all coefficients")
+
+p2 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_bulk)) +
+  geom_point() +
+  geom_hline(yintercept = 8000, color = "red") +
+  annotate("text", x = 10, y = 7800, label = "Samples = 8000", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Bulk ESS values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Bulk effective sample size\n of all coefficients")
+
+p3 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_tail)) +
+  geom_point() +
+  geom_hline(yintercept = 8000, color = "red") +
+  annotate("text", x = 10, y = 7800, label = "Samples = 8000", 
+           hjust = 1, color = "red") + 
+  xlab("Index") +
+  ylab("Tail ESS values") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(size = 10)) + 
+  ggtitle("Tail effective sample size\n of all coefficients")
+
+grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+
+From the figure above, all of the $\hat{R}$ values are very close to 1, suggesting that the samples in the pooled model are representative of the posterior. However, the Bulk and Tail-ESS do not have very high values of effective sampling, suggesting that the pooled model needs some improvements, such as prior specification or dimension reduction. Furthermore, the scatterplots in the figure are cyclic since all countries share the same coefficients and diagnostics, even including $\hat{R}$ and ESS values. 
+
+## 5. Posterior predictive checks
+
+The process of conducting predictive checks is the same as the separate model. 
+
+```{r, echo=FALSE}
+metricsName <- c("Accuracy", "Precision", "Recall", "F1")
+metricsSummary <- data.frame(Metrics=metricsName)
+metricsSummary$Accuracy <- NULL
+metricsSummary$Precision <- NULL
+metricsSummary$Recall <- NULL
+metricsSummary$F1 <- NULL
+#print(metricsSummary)
+sumTP <- 0
+sumTN <- 0
+sumFP <- 0
+sumFN <- 0
+listTrue <- c()
+listPred <- c()
+for (k in 1:K){
+  #predicted_train = c()
+  #for (i in 1:N_list[[k]]){
+  #  draws <- pooled_sampling$draws(paste("label_train_pred[",k,",",i,"]", sep=""), format = "matrix")
+  #  predicted_train <- c(predicted_train, as.vector(draws[1, ]))
+  #}
+
+  #true_train = label_list[[k]][1:N_list[[k]]]
+  #confusion_matrix <- table(predicted_train, true_train)
+
+  true_train = label_list[[k]][1:N_list[[k]]]
+  
+  js_len_truncated <- js_len_list[[k]][1:N_list[[k]]]
+  js_obf_len_truncated <- js_obf_len_list[[k]][1:N_list[[k]]]
+  https_truncated <- https_list[[k]][1:N_list[[k]]]
+  whois_truncated <- whois_list[[k]][1:N_list[[k]]]
+  
+  intercept <- mean(as.vector(pooled_sampling$draws(paste("intercept",sep=""), format = "matrix")[, 1]))
+  js_len_coeff <- mean(as.vector(pooled_sampling$draws(paste("js_len_coeff",sep=""), format = "matrix")[, 1]))
+  js_obf_len_coeff <- mean(as.vector(pooled_sampling$draws(paste("js_obf_len_coeff",sep=""), format = "matrix")[, 1]))
+  https_coeff <- mean(as.vector(pooled_sampling$draws(paste("https_coeff",sep=""), format = "matrix")[, 1]))
+  whois_coeff <- mean(as.vector(pooled_sampling$draws(paste("whois_coeff",sep=""), format = "matrix")[, 1]))
+ 
+    predicted_train <- bernoulli_logit(intercept, js_len_coeff, js_obf_len_coeff, https_coeff, whois_coeff, js_len_truncated, js_obf_len_truncated, https_truncated, whois_truncated)
+   
+  listTrue <- c(listTrue, true_train)
+  listPred <- c(listPred, predicted_train)
+  confusion_matrix <- table(predicted_train, true_train)
+  TP <- confusion_matrix[2,2]
+  TN <- confusion_matrix[1,1]
+  FP <-confusion_matrix[1,2]
+  FN <-confusion_matrix[2,1]
+  #cat(TP,TN,FP,FN)
+  sumTP <- sumTP + TP
+  sumTN <- sumTN + TN
+  sumFP <- sumFP + FP
+  sumFN <- sumFN + FN
+  accuracy <- (TP+TN)/(TP+FP+FN+TN) 
+  precision <- TP/(TP+FP)
+  recall <- TP/(TP+FN)
+  f1 <-  2*(precision*recall)/(precision+recall)
+  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
+}
+accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
+precision <- sumTP/(sumTP+sumFP)
+recall <- sumTP/(sumTP+sumFN)
+f1 <-  2*(precision*recall)/(precision+recall)
+metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
+metricsSummary
+```
+
+Like the separate model, the pooled model performs very well for all countries.
 
 ## 6. Predictive performance assessment
 
+For the testing data, I apply the same procedure like the separate model.
+
+```{r, echo=FALSE}
+metricsName <- c("Accuracy", "Precision", "Recall", "F1")
+metricsSummary <- data.frame(Metrics=metricsName)
+metricsSummary$Accuracy <- NULL
+metricsSummary$Precision <- NULL
+metricsSummary$Recall <- NULL
+metricsSummary$F1 <- NULL
+#print(metricsSummary)
+sumTP <- 0
+sumTN <- 0
+sumFP <- 0
+sumFN <- 0
+listTrue <- c()
+listPred <- c()
+for (k in 1:K){
+  # predicted_test = c()
+  # for (i in 1:M_list[[k]]){
+  #  draws <- pooled_sampling$draws(paste("label_test_pred[",k,",",i,"]", sep=""), format = "matrix")
+  #  predicted_test <- c(predicted_test, as.vector(draws[1, ]))
+  # }
+  true_test = label_test_list[[k]][1:M_list[[k]]]
+  
+  js_len_truncated <- js_len_test_list[[k]][1:M_list[[k]]]
+  js_obf_len_truncated <- js_obf_len_test_list[[k]][1:M_list[[k]]]
+  https_truncated <- https_test_list[[k]][1:M_list[[k]]]
+  whois_truncated <- whois_test_list[[k]][1:M_list[[k]]]
+  
+  intercept <- mean(as.vector(pooled_sampling$draws(paste("intercept",sep=""), format = "matrix")[, 1]))
+  js_len_coeff <- mean(as.vector(pooled_sampling$draws(paste("js_len_coeff",sep=""), format = "matrix")[, 1]))
+  js_obf_len_coeff <- mean(as.vector(pooled_sampling$draws(paste("js_obf_len_coeff",sep=""), format = "matrix")[, 1]))
+  https_coeff <- mean(as.vector(pooled_sampling$draws(paste("https_coeff",sep=""), format = "matrix")[, 1]))
+  whois_coeff <- mean(as.vector(pooled_sampling$draws(paste("whois_coeff",sep=""), format = "matrix")[, 1]))
+  
+  predicted_test <- bernoulli_logit(intercept, js_len_coeff, js_obf_len_coeff, https_coeff, whois_coeff, js_len_truncated, js_obf_len_truncated, https_truncated, whois_truncated)
+  
+  confusion_matrix <- table(predicted_test, true_test)
+  listTrue <- c(listTrue, true_test)
+  listPred <- c(listPred, predicted_test)
+
+  TP <- confusion_matrix[2,2]
+  TN <- confusion_matrix[1,1]
+  FP <-confusion_matrix[1,2]
+  FN <-confusion_matrix[2,1]
+
+  sumTP <- sumTP + TP
+  sumTN <- sumTN + TN
+  sumFP <- sumFP + FP
+  sumFN <- sumFN + FN
+  accuracy <- (TP+TN)/(TP+FP+FN+TN) 
+  precision <- TP/(TP+FP)
+  recall <- TP/(TP+FN)
+  f1 <-  2*(precision*recall)/(precision+recall)
+  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
+}
+accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
+prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
+sensitivity <- sumTP/(sumTP+sumFN)
+specificity <- sumFN/(sumFN+sumFP)
+precision <- sumTP/(sumTP+sumFP)
+recall <- sumTP/(sumTP+sumFN)
+f1 <-  2*(precision*recall)/(precision+recall)
+metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
+metricsSummary
+```
+
+
+It appears that the pooled model performs well in its prediction of malicious URLs, since all metrics are well above 0.9 => The pooled model predicts malicious URL like the separate model.
+
 ## 7. Prior sensitivity analysis
+Like before, I choose a uniform prior to analyze the prior sensitivity analysis in the pooled model.
+$$
+\theta_{{https}} \sim Beta(1,1), \quad \theta_{{whois}} \sim Beta(1,1), \quad 
+\theta_{{js\_len}} \sim Beta(1,1), \quad \theta_{{js\_obf\_len}} \sim Beta(1,1)
+$$
+```{r, echo=FALSE}
+# Compiling the pooled Stan model
+file_pooled_prior1 <- file.path("models/model_pooled_prior_sensitivity_1.stan")
+model_pooled_prior1 <- cmdstan_model(file_pooled_prior1)
+model_pooled_prior1$compile(quiet = FALSE)
+```
+
+```{r, include=FALSE}
+pooled_sampling_prior1 <- model_pooled_prior1$sample(data = stan_data, chains=4, 
+                                  iter_warmup = 1000, iter_sampling = 2000, refresh=0)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+loo_loglike_pooled0 <- pooled_sampling$loo(variables="log_likelihood",r_eff=TRUE)
+loo_loglike_pooled1 <- pooled_sampling_prior1$loo(variables="log_likelihood",r_eff=TRUE)
+```
+
+Now I use LOO-CV method to compare the pooled models with uniform and non-uniform priors:
+```{r}
+loo_compare(x = list(loo_loglike_pooled0=loo_loglike_pooled0,
+                     loo_loglike_pooled1=loo_loglike_pooled1))
+```
+From LOO-CV model comparison, the elpd_diff is only -0.3, while the standard error difference is also 0.3. In other words, the pooled model is quite insensitive to different priors because both elpd_diff and se_diff are smaller than 4. However, it is still more sensitive than the separate model (-0.2 and 0.2)
 
 # Model comparison
 
+```{r, echo=FALSE, warning=FALSE}
+loo_loglik_separate <- separate_sampling$loo(variables="log_likelihood",r_eff=TRUE)
+loo_loglik_pooled <- pooled_sampling$loo(variables="log_likelihood",r_eff=TRUE)
+pareto_k_separate <- loo_loglik_separate$diagnostics$pareto_k
+pareto_k_pooled <- loo_loglik_pooled$diagnostics$pareto_k
+```
+
+In order to compare the separate and pooled models, I need to LOO-CV diagnostics as well as the PSIS $\hat{k}$-values. These are the diagnostics of both models.\
+Separate model:
+```{r, echo=FALSE}
+loo_loglik_separate$estimates
+```
+Pooled model:
+```{r, echo=FALSE}
+loo_loglik_pooled$estimates
+```
+Next, I plot the $\hat{k}$-values for both models
+
+```{r, echo=FALSE, warning=FALSE, fig.align='center', fig.width=6,fig.height=4}
+df <- data.frame(pareto_k_separate = pareto_k_separate, 
+                 pareto_k_pooled = pareto_k_pooled)
+
+ggplot(df, aes(x = 1:length(pareto_k_separate), 
+               y = pareto_k_separate, 
+               fill = "pareto_k_separate")) + 
+  geom_bar(stat = "identity", width = 0.5) + 
+  geom_bar(aes(x = 1:length(pareto_k_pooled) + 0.5, 
+               y = pareto_k_pooled, 
+               fill = "pareto_k_pooled"), 
+          stat = "identity", width = 0.5) + 
+  scale_fill_manual(values = c("pareto_k_separate" = "purple", 
+                                "pareto_k_pooled" = "orange")) + 
+  labs(title = "PSIS k-values of the separate and pooled models", 
+       x = "Index", 
+       y = "Value", 
+       fill = "") + 
+  geom_hline(yintercept = 0.7, color = "darkred", size = 1) +
+  annotate("text", x = 40, y = 0.75, label = "bad k-values = 0.7", color = "darkred", hjust = 1, vjust = 0, size=3) +
+  geom_hline(yintercept = 1, color = "red", size = 1) +
+  annotate("text", x = 40, y = 1.05, label = "very bad k-values = 1", color = "red", hjust = 1, vjust = 0, size=3) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=10)) +
+  theme(legend.position = "bottom")
+```
+
+The Pareto k estimate is a diagnostic for Pareto smoothed importance sampling (PSIS), which is used to compute components of elpd_loo. If $k < 0.5$, then the corresponding component of elpd_loo is estimated with high accuracy. If $0.5 < k < 0.7$ the accuracy is lower, but it is still acceptable. If k > 0.7, then importance sampling is not able to provide useful estimate for that observation.  From the figure, there are multiple k values larger than 0.7, suggesting that both separate and pooled models are overly optimistic. Therefore, I need to examine the p_loo values to verify whether this is a sign of a weak model. If k > 0.7 then we have the following interpretations:
+
+If p_loo << p (the number of parameters), then the model is likely to be misspecified. \
+If p_loo < p/5, it is likely that the model is so flexible or the population prior is very weak. \
+If p_loo > p, then the model is likely to be badly misspecified. 
+
+In the separate model, p_loo is 2.597943 and 2.357919 in the pooled model. The number of parameters in my models are 4 probability parameters + 5 coefficients = 9. Since p_loo of both models are smaller than 9/5 = 1.8, this does not fall into any of the bad cases mentioned previously. As a result, while both separate and pooled models are optimistic, the p_loo value interpretation otherwise suggests that these two models are still acceptable for future prediction of malicious URLs. 
+
+Finally, I compare two models with LOO-CV. It appears that the separate and pooled models are not so different from each other, as both of them have equally high classification metrics.
+
+```{r}
+loo_compare <- loo_compare(x = list(loo_loglik_separate=loo_loglik_separate,
+                                    loo_loglik_pooled=loo_loglik_pooled))
+print(loo_compare)
+```
 # Discussion
 
-* Existing issues
-+
-+
-* Potential improvements
-+
-+
+Existing problems\
+- Some PSIS k-values are higher than 0.7 for both models. \
+- The ESS values are a little bit low for the pooled model. \
+Potential improvements\
+- I can try to implement the hierarchical model, which incorporates both elements of the separate and the pooled model. I believe the hierarchical model may deliver better results.\
+- Feature reduction: due to the high number of parameters (9), there is too much uncertainty. A solution is many binary features can be combined and modeled with the categorical distribution in Stan model.
 
 # Conclusion
 
+This report has documented two Bayesian model: the separate and the pooled models, which are charged with the task of malicious URLs classification. The separate model classify the URLs based on individual countries, while the pooled model treats all URLs as if they come from a single source. While both models are not entirely reliable based on the PSIS-LOO diagnostics, they are nevertheless proven to deliver high accuracy, as witnessed from the classification metrics on the training and testing data. 
 
+In conclusion, the Bayesian approach in this report provides a systematic analysis for detecting malicious URLs on the internet in the cybersecurity field. Unlike traditional methods such as supervised learning, the Bayesian methods allow us to incorporate prior knowledge on the distribution of parameters, account for model uncertainty and update new beliefs as additional information becomes available. 
 
 
 # Reflection
 
+By doing this project, I have a chance to combine all of my previous learned knowledge in BDA into building a systematic study and report for an existing problem in cybersecurity. The most laborious step, in my opinion, is choosing the correct dataset and conducting data cleaning and feature selection. 
+
+The next challenge for me is writing the Stan model. During the course, I was only used to writing Stan models for continuous variables and regression for real-valued labels. However in this project, I have to deal with mostly binary/discrete variables and classification, which I have not done before in this course.
 
 # References
 

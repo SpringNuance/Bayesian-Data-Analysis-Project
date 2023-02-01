@@ -32,10 +32,10 @@ parameters {
 
 model {
     // Prior probabilities of the features
-    theta_js_len ~ beta(1,10);
-    theta_js_obf_len ~ beta(1,10);
-    theta_https ~ beta(8,10);
-    theta_whois ~ beta(7,10);
+    theta_js_len ~ beta(1,2);
+    theta_js_obf_len ~ beta(1,2);
+    theta_https ~ beta(8,2);
+    theta_whois ~ beta(7,3);
     // likelihood for the features
     for (k in 1:K){
         js_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_len);
@@ -44,10 +44,10 @@ model {
         whois_list[k, 1:N_list[k]] ~ bernoulli(theta_whois);     
     }
     // priors of the coefficients
-    js_len_coeff ~ cauchy(1,1);
-    js_obf_len_coeff ~ cauchy(1,1);
-    https_coeff  ~ cauchy(-1,1);
-    whois_coeff ~ cauchy(-1,1);
+    js_len_coeff ~ normal(1,10);
+    js_obf_len_coeff ~ normal(1,10);
+    https_coeff  ~ normal(-1,10);
+    whois_coeff ~ normal(-1,10);
     intercept ~ normal(0,20);        
     // Modelling of the label based on bernoulli logistic regression by multiple variable linear regression 
     for (k in 1:K){
@@ -58,21 +58,7 @@ model {
 }
 
 generated quantities {
-    array[K, Nmax] real label_train_pred;
-    array[K, Mmax] real label_test_pred;
     array[Nmax] real log_likelihood; 
-    // Predictions for the training data
-    for (k in 1:K){
-      for (i in 1:N_list[k]){
-        label_train_pred[k, i] = bernoulli_rng(inv_logit(intercept + https_coeff * https_list[k, i] + whois_coeff * whois_list[k, i] + js_len_coeff * js_len_list[k, i] + js_obf_len_coeff * js_obf_len_list[k, i]));
-      }
-    }
-    // Predictions for the testing data
-    for (k in 1:K){
-      for (i in 1:M_list[k]){
-        label_test_pred[k, i] = bernoulli_rng(inv_logit(intercept + https_coeff * https_pred_list[k, i] + whois_coeff * whois_pred_list[k, i] + js_len_coeff * js_len_pred_list[k, i] + js_obf_len_coeff * js_obf_len_pred_list[k, i]));
-      }
-    }
     for (k in 1:K) {
       if (N_list[k] == Nmax){
         for (i in 1:Nmax){
