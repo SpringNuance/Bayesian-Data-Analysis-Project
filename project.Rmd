@@ -1,58 +1,17 @@
 ---
-title: "BDA Project: Malicious and Benign Website URL detections"
+title: 'BDA Project: Malicious And Benign Website URL Detection'
 author: "Nguyen Xuan Binh"
-date: "January 2023"
-output: 
+date: "1st February 2023"
+output:
   pdf_document:
     toc: yes
     toc_depth: 3
     fig_caption: yes
+  word_document:
+    toc: yes
+    toc_depth: '3'
 bibliography: bibliography.bib
 ---
-
-# Introduction
-
-## Central problem
-Web Security is a challenging task amidst ever rising threats on the Internet. With billions of websites active on Internet, and hackers evolving newer techniques to trap web users, machine learning offers promising techniques to detect malicious websites. The dataset described in this manuscript is meant for such machine learning based analysis of malicious and benign webpages. The data has been collected from Internet using a specialized focused web crawler named MalCrawler [1]. The dataset comprises of various extracted attributes, and also raw webpage content including JavaScript code. It supports both supervised and unsupervised learning. For supervised learning, class labels for malicious and benign webpages have been added to the dataset using the Google Safe Browsing API.1 The most relevant attributes within the scope have already been extracted and included in this dataset. However, the raw web content, including JavaScript code included in this dataset supports further attribute extraction, if so desired. Also, this raw content and code can be used as unstructured data input for text-based analytics. This dataset consists of data from approximately 1.5 million webpages, which makes it suitable for deep learning algorithms. This article also provides code snippets used for data extraction and its analysis.
-
-## Motivation
-
-
-## Main modeling idea
-
-
-# Dataset 
-
-## Data Description
-
-The dataset contains extracted attributes from websites that can be used for Classification of webpages as malicious or benign. The dataset also includes raw page content including JavaScript code that can be used as unstructured data in Deep Learning or for extracting further attributes. The data has been collected by crawling the Internet using MalCrawler [1]. The labels have been verified using the Google Safe Browsing API [2]. Attributes have been selected based on their relevance [3]. The details of dataset attributes is as given below: 
-'url'         - The URL of the webpage.
-'ip_add'      - IP Address of the webpage.
-'geo_loc'     - The geographic location where the webpage is hosted.
-'url_len'     - The length of URL.
-'js_len'      - Length of JavaScript code on the webpage.
-'js_obf_len - Length of obfuscated JavaScript code.
-'tld'         - The Top Level Domain of the webpage.
-'who_is'      - Whether the WHO IS domain information is compete or not.
-'https'         - Whether the site uses https or http.
-'content'     - The raw webpage content including JavaScript code.
-'label'          - The class label for benign or malicious webpage. 
- 
-Python code for extraction of the above listed dataset attributes is attached.
-The Visualisation of this dataset and it python code is also attached. This visualisation can be seen online on Kaggle
-
-## Data source and analysis difference
-Kaggle: https://www.kaggle.com/datasets/aksingh2411/dataset-of-malicious-and-benign-webpages
-Data source: https://data.mendeley.com/datasets/gdx3pkwp47/2
-https://www.researchgate.net/publication/347936136_Malicious_and_Benign_Webpages_Dataset
-
-
-
-
-# Data cleaning
-
-# Feature selection and transformation
-
 
 ```{r, include=FALSE}
 library(rstan)
@@ -82,21 +41,135 @@ options(dplyr.summarise.inform = FALSE)
 #knitr::opts_chunk$set(eval = FALSE)
 ```
 
-```{r}
+# Introduction
+
+## 1. Central problem
+Detection of malicious URLs among the benign ones is a crucial goal of modern-day cybersecurity as it helps prevent individuals and organizations from falling victim to phishing, data breaching, malware infections, and other types of cyber threats. The most common type is phishing, where the URLs are disguised as valid sites to trick users into revealing their credentials. Some other types even install harmful softwares or redirect users to other malicious sites. With the rapid growth of the internet and the increasing dependence on technology, black-hat hackers and thieves have found innovative ways to spread their malicious content through fake URLs. A 2017 report from Cybersecurity Ventures predicted ransomware damages would cost the world $5 billion in 2017, up from $325 million in 2015 — a 15X increase in just two years. The damages for 2018 were predicted to reach $8 billion, and for 2019 the figure is $11.5 billion (@ransomware). Therefore, it is an urgent task to automate the process of detecting and blocking malicious URLs floating on the net. 
+
+## 2. Motivation
+In order to protect against these threats, it is essential to detect malicious URLs and prevent individuals and organizations from accessing them. This can be accomplished through various techniques, including URL reputation analysis, machine learning algorithms, and network security solutions. By detecting and blocking malicious URLs, individuals and organizations can better protect themselves and their sensitive information from cyber-attacks. In this report, I aim to detect malicious URLs among the benign or safe ones based on various features of the URLs and the websites associated with them. The analysis method will be based on the Bayesian inference approach to account for past data on the recorded URLs.   
+
+## 3. Main modeling idea
+
+The problem is the detection of malicious URLs, which means it is a classification task. As a result, I will heavily use the Beta distribution to model the probabilities for each feature and the Bernoulli distribution for modeling the likelihood of both labels and features. Based on intuition, the rate of malicious URLs is expected to vary depending on the countries and regions. For example, reputable countries in cybersecurity, such as Finland and UK, will host much fewer malicious domains/URLs. In contrast, others, such as Russia, China, and Vietnam, are less regulated and will have more harmful network content. From this belief, I decided to split the recorded URLs depending on the countries and proceeded to perform two Bayesian models: the separate model, where the rates of malicious URLs from each country are individually analyzed, and the pooled model, where all URLs are merged and treated as if they come from only one source. Both models are equally valid in that the separated model looks from the perspective of regional difference, while the pooled model looks from the common origin on the Domain Name System (DNS). Below is the illustration of malicious and benign URLs distribution among the recorded countries. 
+
+```{r, include=FALSE}
 train_websites <- read.csv("websites/train_websites.csv")
 test_websites <- read.csv("websites/test_websites.csv")
 train_websites_top_3 <- read.csv("websites/train_websites_top_3.csv")
 test_websites_top_3 <- read.csv("websites/test_websites_top_3.csv")
 ```
 
+```{r, echo=FALSE}
+# Group the dataframe by geo_loc and count the number of rows for each country
+test_websites_count <- test_websites %>% 
+  group_by(geo_loc) %>%
+  summarize(count = n() ) %>%
+  top_n(5, count) %>%
+  slice_tail(n=5)
 
-```{r}
+# Count the number of benign and malicious URLs for each country
+test_websites_count_label <- test_websites %>% 
+  filter(geo_loc %in% test_websites_count$geo_loc) %>%
+  group_by(geo_loc, label) %>%
+  summarize(count = n())
+
+# Plot the bar chart
+ggplot(test_websites_count_label, aes(x = geo_loc, y = count, fill = label)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = c("red", "blue"), 
+                    labels = c("malicious","benign")) +
+  xlab("Country") +
+  ylab("Number of URLs") +
+  ggtitle("Distribution of benign and malicious URLs\n of top 5 recorded countries") +
+  guides(fill = guide_legend(title = "Label")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5, vjust = 0.5, size = 10, 
+                                  margin = margin(r = -20, unit = "pt"),
+                                  #family = "serif", 
+                                  lineheight = 0.9, color = "black"))
+```
+
+# Dataset 
+
+## 1. Data description
+The dataset in this report is collected by an author named A.K.Singh in his research paper for International Conference on Communication Systems & Networks (@singh2). This dataset specifically caters for machine learning-based classification analysis of malicious and benign webpages. According to the author, this dataset comprises of various extracted attributes and raw webpage content, which are:
+
++ 'url'         - (string) The URL of the webpage 
++ 'ip_add'      - (string) IP address of the webpage.
++ 'geo_loc'     - (string - categorical) The geographic location where the webpage is hosted.
++ 'url_len'     - (float) The length of URL.
++ 'js_len'      - (float) Length of JavaScript code on the webpage.
++ 'js_obf_len   - (float) Length of obfuscated JavaScript code.
++ 'tld'         - (string - categorical) The top level domain of the webpage.
++ 'who_is'      - (binary) Whether the WHO IS domain information is complete or not.
++ 'https'       - (binary) Whether the site uses https or http.
++ 'content'     - (string) The raw webpage content including JavaScript code.
++ 'label'       - (binary) The class label for benign or malicious webpage. 
+
+Because his dataset is extremely heavy and extensive (1.3 million datapoints for training data and nearly 340000 datapoints for testing data), I only extract a tiny portion from it, which is 120 training and 250 testing datapoints to allow the Stan sampling to run adequately fast.  
+
+```{r, include=FALSE}
 cat("Number of training data:",nrow(train_websites_top_3))
 cat("\nNumber of testing data:",nrow(test_websites_top_3))
 head(train_websites_top_3)
 ```
 
-```{r,echo=FALSE}
+## 2. Data source and analysis difference
+The source of the dataset can be found at:
+
+Data source description (@singh): https://data.mendeley.com/datasets/gdx3pkwp47/2
+
+Data source download website: https://www.researchgate.net/publication/347936136_Malicious_and_Benign_Webpages_Dataset
+
+It is also available on Kaggle: https://www.kaggle.com/datasets/aksingh2411/dataset-of-malicious-and-benign-webpages
+
+The difference between this report and the paper of A.K.Singh is that he focuses on comparing various machine learning strategies to tackle this problem, which are supervised and unsupervised learning, while this report solely focuses on the Bayesian inference technique, combined with supervised learning to predict the malicious URLs. His paper did mention a Bayesian technique, but it is Naive Bayes Classifier, while the Bayesian technique in this project is based on probabilistic sampling in separate and pooled models.
+
+## 3. Feature selection and data cleaning
+
+Feature selection is crucial to dimension reduction and model accuracy and runtime improvement. I have set two criteria: the number of features should be at most four, and the features should be highly correlated with the label (malicious/benign). 
+
+First is the URL itself. Based on the URL alone, it is hard to determine whether it is related to the underneath danger, so I decided to extract the number of special characters from the URL. This is the original dataset after I calculated the num_special column
+
+```{r, echo=FALSE}
+# Define the special characters you want to count
+special_chars <- c("/","%", "#", "&”, “." , "," ,"=")
+
+# Create a new column "num_special" and populate it with the number of special characters in each URL
+
+train_websites$num_special <- sapply(train_websites$url, function(x) sum(str_count(x, paste(special_chars, collapse="|"))))
+
+test_websites$num_special <- sapply(test_websites$url, function(x) sum(str_count(x, paste(special_chars, collapse="|"))))
+```
+
+```{r}
+head(test_websites)
+```
+
+```{r, fig.align="center", echo = FALSE,fig.width = 5, fig.height=2}
+
+ggplot(data = test_websites, aes(x = url_len, y = num_special, color = label)) +
+  geom_point() +
+  scale_color_manual(values = c("red", "blue"), 
+                     labels = c("malicious", "benign"),
+                     guide = guide_legend(title = "Label")) +
+  ggtitle("Number of special characters and URL length") +
+  xlab("URL length") +
+  ylab("Number of \nspecial characters") +
+  theme(plot.title = element_text(hjust = 0.5))
+  #geom_vline(xintercept = 250, linetype = "dashed", color = "black") + 
+  #geom_hline(yintercept = 100, linetype = "dashed", color = "black") +
+  #annotate("text", x = 260, y = Inf, label = "js_len = 250", hjust = 0, vjust = 1) +
+  #annotate("text", x = Inf, y = 60, label = "js_ofs_len = 100", hjust = 1, vjust = 0) 
+  #guides(color = guide_legend(title = "Label"))
+```
+It appears that the URL name itself is not helpful for prediction, including its length. This can seen from the graph above as all malicious and benign URL lengths are randomly distributed, while the number of special characters are all 0s. Therefore, I omitted the features "url" and "url_len".  
+
+Next is the top level domain (tld) name. While some domains may be notoriously dangerous, such as .zip, .link and .review, most of the tld in the dataset are the most popular domains, such as .com, .org and .net. All of them are equally likely to be benign or malicious as they are prevalent on WWW. As a result, I omitted tld feature as it is not particularly helpful in prediction.   
+
+Next, I examine two features: https and whois. HTTPS (Hypertext Transfer Protocol Secure) is an extension of the HTTP. It uses encryption for secure communication over a computer network, and is widely used on the Internet. As a result, websites with https are much more likely to be secure and safe compared to http websites. On the other hand, WHOIS is a query and response protocol that is widely used for querying databases that store the registered users or assignees of an Internet resource, such as a domain name, an IP address block or an autonomous system. Websites with completed whois registration is much safer and transparent than unregistered websites. Therefore, I decided to keep these two features.
+```{r,echo=FALSE, fig.width = 7, fig.height=7}
 # Count the number of rows for each combination of https and who_is
 
 train_websites_count <- train_websites %>% 
@@ -161,13 +234,9 @@ p3 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(htt
   theme(legend.position = "bottom") +
   theme(plot.title = element_text(hjust = 0.5)) +
   theme(plot.title = element_text(size = 10), legend.text = element_text(size = 8)) +
-  ggtitle(paste("(HTTPS.WHOIS) pair combination\nin",numberOfBenignURLs,"benign URLs")) +
+  ggtitle(paste("(HTTPS.WHOIS) combinations\nin",numberOfBenignURLs,"benign URLs")) +
   guides(fill=guide_legend(title="", nrow=2))
 
-grid.arrange(p1, p2, p3, ncol = 3)
-```
-
-```{r, echo=FALSE}
 # Count the number of rows for each combination of https and who_is
 
 train_websites_count <- train_websites %>% 
@@ -180,7 +249,7 @@ train_websites_count <- train_websites %>%
   summarize(count = n())
 
 # Create a pie chart with a legend
-p1 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https))) +
+p4 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https))) +
   geom_bar(width = 1, stat = "identity") +
   coord_polar("y", start = 0, direction = 1) +
   scale_fill_manual(values = c("red", "green"), labels=c("no","yes")) +
@@ -204,13 +273,13 @@ train_websites_count <- train_websites %>%
   arrange(desc(count))
 
 # Create a pie chart with a legend
-p2 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(who_is))) +
+p5 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(who_is))) +
   geom_bar(width = 1, stat = "identity") +
   coord_polar("y", start = 0, direction = -1) +
   scale_fill_manual(values = c("green", "red"), labels=c("complete","incomplete")) +
   theme(legend.position = "bottom") +
   theme(plot.title = element_text(hjust = 0.5)) +
-  theme(plot.title = element_text(size = 10), legend.text = element_text(size = 8)) +
+  theme(plot.title = element_text(size = 10), legend.text = element_text(size = 7)) +
   ggtitle(paste("WHOIS in",numberOfMaliciousURLs,"malicious URLs\n(complete/incomplete)")) +
   
   guides(fill=guide_legend(title=""))
@@ -227,27 +296,31 @@ train_websites_count <- train_websites %>%
   summarize(count = n())
 
 # Create a pie chart with a legend
-p3 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https, who_is))) +
+p6 <- ggplot(train_websites_count, aes(x = "", y = count, fill = interaction(https, who_is))) +
   geom_bar(width = 1, stat = "identity") +
   coord_polar("y", start = 0, direction = 1) +
   scale_fill_manual(values = c("blue", "green", "red", "orange")) +
   theme(legend.position = "bottom") +
   theme(plot.title = element_text(hjust = 0.5)) +
-  theme(plot.title = element_text(size = 10), legend.text = element_text(size = 8)) +
-  ggtitle(paste("(HTTPS.WHOIS) pair combination\nin",numberOfMaliciousURLs,"malicious URLs")) +
+  theme(plot.title = element_text(size = 10), legend.text = element_text(size = 7)) +
+  ggtitle(paste("(HTTPS.WHOIS) combinations\nin",numberOfMaliciousURLs,"malicious URLs")) +
   guides(fill=guide_legend(title="")) +
   guides(fill=guide_legend(title="", nrow=2))
 
-grid.arrange(p1, p2, p3, ncol = 3)
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 3, nrow=2)
 ```
 
-```{r}
+From the pie charts, it is evident that https and completed whois registration are strongly related to the label. Most benign websites have https and completed whois but otherwise for malicious ones.
+
+Finally, two features left are the Javascript length and the obfuscated Javascript length of the web raw content. Javascript is the native language of web browsers and inherent to all running websites. Because Javascript code is open-source by Inspection, some organizations want to prevent others to copy their code. Therefore, JavaScript obfuscation is a series of code transformations that turn plain, easy-to-read JS code into a modified version that is extremely hard to understand and reverse-engineer. 
+
+```{r, echo=FALSE, fig.align='center', fig.width = 5, fig.height=3}
 ggplot(data = train_websites, aes(x = js_len, y = js_obf_len, color = label)) +
   geom_point() +
   scale_color_manual(values = c("red", "blue"), 
                      labels = c("malicious", "benign"),
                      guide = guide_legend(title = "Label")) +
-  ggtitle("js_len vs js_obf_len") +
+  ggtitle("JS length and obfuscated JS length") +
   xlab("js_len") +
   ylab("js_obf_len") +
   theme(plot.title = element_text(hjust = 0.5)) +
@@ -258,45 +331,22 @@ ggplot(data = train_websites, aes(x = js_len, y = js_obf_len, color = label)) +
   #guides(color = guide_legend(title = "Label"))
 ```
 
+When plotting them together, a clear pattern has arisen. It appears that all URLs having JS length longer than 250 are malicious and benign when smaller than 250. Regarding the obfuscated JS length, if it is larger than 100, the URL is almost certain to be malicious. If it is smaller than 100, the URL is likely to be benign, as the number of red points are much smaller than the blue points under the line js_obf_len = 100. Observing this distinction, I decided to transform these two float features into binary formats as follows:\
+- $js_{len} \geq 250 => js_{len\_binary} = 1$ and $0$ otherwise\
+- $js_{obf\_len} \geq 100 => js_{len\_obf\_binary} = 1$ and $0$ otherwise\
 
+Because the https, whois and label columns are in string formats, I also need to convert them to binary formats (0/1) so that it can be passed into the Stan models. The binary labels are:\
+- $label = "good" => label\_bin = 0$ and $label = "bad" => label\_bin = 1$\
+- $https = "yes" => https\_bin = 0$ and $https = "no" => https\_bin = 1$\
+- $whois = "complete" => whois\_bin = 0$ and $whois = "incomplete" => whois\_bin = 1$\
 
+From this binary format, it appears that js_len and js_obf_len have inverse proportion while https and whois have direct proportional to the label according to the analysis above. In total, there are four features in this report: https, whois, js_len and js_obf_len. Finally, the geo_loc column indicates which country the URL originates from. It is used to partition the URLs into different countries for the separate and pooled models. As a result, geo_loc is not a feature in this report. The cleaned dataframe now becomes:.  
 
-```{r}
-# Set up the plotting grid for the coefficients
-par(mfrow = c(2,1))
-
-hist(train_websites$js_len, main = "JS length histogram of the recorded URLs", xlab = "Javascript length", breaks = 100)
-hist(train_websites$js_obf_len, main ="Obfuscated JS length histogram of the recorded URLs", xlab = "Obfuscated Javascript length",breaks = 100)
+```{r, echo=FALSE}
+keptColNames = c("label_bin", "geo_loc", "https_bin", "whois_bin", "js_len_bin", "js_obf_len_bin")
+head(train_websites_top_3[, keptColNames])
 ```
 
-```{r}
-# Group the dataframe by geo_loc and count the number of rows for each country
-train_websites_count <- train_websites %>% 
-  group_by(geo_loc) %>%
-  summarize(count = n() ) %>%
-  top_n(3, count) %>%
-  slice_tail(n=3)
-
-# Count the number of benign and malicious URLs for each country
-train_websites_count_label <- train_websites %>% 
-  filter(geo_loc %in% train_websites_count$geo_loc) %>%
-  group_by(geo_loc, label) %>%
-  summarize(count = n())
-
-# Plot the bar chart
-ggplot(train_websites_count_label, aes(x = geo_loc, y = count, fill = label)) +
-  geom_bar(stat = "identity", position = "stack") +
-  scale_fill_manual(values = c("red", "blue"), 
-                    labels = c("malicious","benign")) +
-  xlab("Country") +
-  ylab("Number of URLs") +
-  ggtitle("Distribution of benign and malicious URLs of top 3 recorded countries") +
-  guides(fill = guide_legend(title = "Label")) +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0.5, vjust = 0.5, size = 10, 
-                                  margin = margin(r = -20, unit = "pt"),
-                                  #family = "serif", 
-                                  lineheight = 0.9, color = "black"))
-```
 
 ```{r, echo=FALSE}
 
@@ -443,857 +493,49 @@ stan_data <- list(
 )
 ```
 
+
 # Separate model
 
-## Model description
+## 1. Model description
 
-## Prior choice and justifications
-Default protocol https is used by 81.5% of all the websites. @https://w3techs.com/technologies/details/ce-httpsdefault
+## 2. Prior choice and justifications
 
-There are 1.24 billion with complete WHOIS registration, while there are currently 1.7 billion websites. So the ratio of complete WHOIS website is 0.73.
+## 3. Stan code and running options
 
-## Stan code and running options
+## 4. Convergence diagnostics
 
-The Stan model code:
-```{r, echo = TRUE, results = 'hide'}
-"
-data {
-  int<lower=1> Nmax; // Number of maximum URLs among all countries (training)
-  int<lower=1> Mmax; // Number of maximum URLs among all countries (testing)
-  int<lower=1> K; // Number of countries
-  array[K] int<lower=1> N_list; // Number of URLs of each country (training)
-  array[K] int<lower=1> M_list; // Number of URLs of each country (testing)
-  // The training features
-  array[K, Nmax] int<lower=0,upper=1> js_len_list;
-  array[K, Nmax] int<lower=0,upper=1> js_obf_len_list;
-  array[K, Nmax] int<lower=0,upper=1> https_list;
-  array[K, Nmax] int<lower=0,upper=1> whois_list;
-  // The testing predicting features
-  array[K, Mmax] int<lower=0,upper=1> js_len_pred_list;
-  array[K, Mmax] int<lower=0,upper=1> js_obf_len_pred_list;
-  array[K, Mmax] int<lower=0,upper=1> https_pred_list;
-  array[K, Mmax] int<lower=0,upper=1> whois_pred_list;
-  // label for each URL: benign(0) or malicious(1)
-  array[K, Nmax] int<lower=0,upper=1> label_list; 
-}
+## 5. Posterior predictive checks
 
-parameters {
-  array[K] real<lower=0, upper=1> theta_js_len; // probability for js_len
-  array[K] real<lower=0, upper=1> theta_js_obf_len; // probability for js_obf_len
-  array[K] real<lower=0, upper=1> theta_https; // probability for https
-  array[K] real<lower=0, upper=1> theta_whois; // probability for whois
-  array[K] real js_len_coeff; // Slope coefficient for js_len
-  array[K] real js_obf_len_coeff; // Slope coefficient for js_obf_len
-  array[K] real https_coeff; // Slope coefficient for https_coeff
-  array[K] real whois_coeff; // Slope coefficient for whois_coeff
-  array[K] real intercept; // Intercept coefficient
-}
+## 6. Predictive performance assessment
 
-model {
-    // Prior probabilities of the features
-    for (k in 1:K){
-        theta_js_len[k] ~ beta(1,10);
-        theta_js_obf_len[k] ~ beta(1,10);
-        theta_https[k] ~ beta(8,10);
-        theta_whois[k] ~ beta(7,10);
-    }
-    // likelihood for the features
-    for (k in 1:K){
-        js_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_len[K]);
-        js_obf_len_list[k, 1:N_list[k]] ~ bernoulli(theta_js_obf_len[K]);
-        https_list[k, 1:N_list[k]] ~ bernoulli(theta_https[K]);
-        whois_list[k, 1:N_list[k]] ~ bernoulli(theta_whois[K]);     
-    }
-    // priors of the coefficients
-    for (k in 1:K){
-       js_len_coeff[k] ~ cauchy(1,1);
-       js_obf_len_coeff[k] ~ cauchy(1,1);
-       https_coeff[k]  ~ cauchy(-1,1);
-       whois_coeff[k] ~ cauchy(-1,1);
-       intercept[k] ~ normal(0,20);        
-    }
-    // Modelling of the label based on bernoulli logistic regression by 
-    // multiple variable linear regression 
-    for (k in 1:K){
-      for (i in 1:N_list[k]){
-        label_list[k, i] ~ bernoulli(inv_logit(intercept[k] 
-            + https_coeff[k] * https_list[k, i]
-            + whois_coeff[k] * whois_list[k, i] 
-            + js_len_coeff[k] * js_len_list[k, i] 
-            + js_obf_len_coeff[k] * js_obf_len_list[k, i]));
-      }
-    }
-}
-
-generated quantities {
-    array[K, Nmax] real label_train_pred;
-    array[K, Mmax] real label_test_pred;
-    array[Nmax] real log_likelihood; 
-    // Predictions for the training data
-    for (k in 1:K){
-      for (i in 1:N_list[k]){
-        label_train_pred[k, i] = bernoulli_rng(inv_logit(intercept[k] 
-            + https_coeff[k] * https_list[k, i] 
-            + whois_coeff[k] * whois_list[k, i] 
-            + js_len_coeff[k] * js_len_list[k, i] 
-            + js_obf_len_coeff[k] * js_obf_len_list[k, i]));
-      }
-    }
-    // Predictions for the testing data
-    for (k in 1:K){
-      for (i in 1:M_list[k]){
-        label_test_pred[k, i] = bernoulli_rng(inv_logit(intercept[k] 
-            + https_coeff[k] * https_pred_list[k, i] 
-            + whois_coeff[k] * whois_pred_list[k, i] 
-            + js_len_coeff[k] * js_len_pred_list[k, i] 
-            + js_obf_len_coeff[k] * js_obf_len_pred_list[k, i]));
-      }
-    }
-    for (k in 1:K) {
-      if (N_list[k] == Nmax){
-        for (i in 1:Nmax){
-          log_likelihood[i] = bernoulli_lpmf(label_list[k, i] | inv_logit(intercept[k] 
-            + https_coeff[k] * https_list[k, i] 
-            + whois_coeff[k] * whois_list[k, i] 
-            + js_len_coeff[k] * js_len_list[k, i] 
-            + js_obf_len_coeff[k] * js_obf_len_list[k, i]));
-        }
-      }
-    }
-}
-
-"
-```
-
-```{r, echo=FALSE}
-# Compiling the separate Stan model
-file_separate <- file.path("models/model_separate.stan")
-model_separate <- cmdstan_model(file_separate)
-model_separate$compile(quiet = FALSE)
-```
-
-The sampling running options
-
-```{r}
-  separate_sampling <- model_separate$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
-```
-
-```{r, echo=FALSE}
-# Set up the plotting grid
-par(mfrow = c(3,5))
-
-row_labels <- c("intercept", "HTTPS coefficient", "WHOIS coefficient","JS length coefficient","JS obf. length coefficient")
-row_names <- c("intercept","https_coeff","whois_coeff","js_len_coeff","js_obf_len_coeff")
-
-#separate_sampling$summary()
-# Loop through the countries
-for (j in 1:3){
-  for(i in 1:5){
-      # Create the subplot
-      hist(separate_sampling$draws(paste(row_names[i],"[",j,"]", sep="")),main = countries[j], xlab=row_labels[i])
-      # Add the country name to the top of the column
-      mtext(countries[j], side = 3, line = 0.2, outer = TRUE)
-    }
-}
-```
-
-## Convergence diagnostics
-
-MCMC convergence chains visualization
-```{r, echo=FALSE}
-plotConvergence <- function (draws, paramName){
-  chain1 <- as.vector(draws[1:1000, 1])
-  chain2 <- as.vector(draws[1001:2000, 1])
-  chain3 <- as.vector(draws[2001:3000, 1])
-  chain4 <- as.vector(draws[3001:4000, 1])
-  iters = length(chain1)
-  indices <- 1:iters
-  data <- data.frame(indices, chain1, chain2, 
-                              chain3, chain4)
-  
-  p <- ggplot(data, aes(x=indices)) +
-    ggtitle(paste("Separate model - Convergence of",paramName,"\n",iters,"sampling iterations, no warm-up")) +
-    xlab("iteration") + 
-    ylab(paramName) +
-    theme(plot.title = element_text(hjust = 0.5, size=10), legend.position = "right") +
-    geom_line(aes(y = chain1, color = "chain1")) + 
-    geom_line(aes(y = chain2, color = "chain2")) +
-    geom_line(aes(y = chain3, color = "chain3")) + 
-    geom_line(aes(y = chain4, color = "chain4")) +
-    scale_color_manual(name = "MCMC", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black"))
-  return(p)
-}
-
-intercept_draws <- separate_sampling$draws("intercept[1]", format = "matrix")
-p1 <- plotConvergence(intercept_draws, "intercept")
-
-https_draws <- separate_sampling$draws("https_coeff[1]", format = "matrix")
-p2 <- plotConvergence(https_draws, "https coefficient")
-
-grid.arrange(p1, p2, ncol = 2)
-# whois_draws <- separate_sampling$draws("whois_coeff[1]", format = "matrix")
-# plotConvergence(whois_draws, "whois coefficient")
-
-#js_len_draws <- separate_sampling$draws("js_len_coeff[1]", format = "matrix")
-#plotConvergence(js_len_draws, "JS length coefficient")
-
-#js_obf_len_draws <- separate_sampling$draws("js_obf_len_coeff[1]", format = "matrix")
-#plotConvergence(js_obf_len_draws, "JS obfuscated length coefficient")
-```
-
-HMC specific convergence diagnostics
-```{r, eval=TRUE, include=TRUE}
-separate_sampling$diagnostic_summary()
-```
-
-$\hat{R}$-values and effective sample size
-```{r, echo=FALSE}
-summaryDiagnostics = data.frame()
-for (i in 1:K){
-  summaryDiagnosticsCountry <- separate_sampling$summary(c(paste("intercept[",i,"]", sep=""), paste("https_coeff[",i,"]", sep=""),paste("whois_coeff[",i,"]", sep=""),paste("js_len_coeff[",i,"]", sep=""),paste("js_obf_len_coeff[",i,"]", sep="")))[, c("variable", "rhat", "ess_bulk", "ess_tail")]
- summaryDiagnostics <- rbind(summaryDiagnostics, summaryDiagnosticsCountry)
- 
-}
-summaryDiagnostics$variable <- 1:15 
-summaryDiagnostics <- summaryDiagnostics %>% rename(index = variable)
-
-p1 <- ggplot(summaryDiagnostics, aes(x = index, y = rhat)) +
-  geom_point() +
-  geom_hline(yintercept = 1.05, color = "red") +
-  annotate("text", x = 15, y = 1.055, label = "critical Rhat value = 1.05", 
-           hjust = 1, color = "red") + 
-  xlab("Index") +
-  ylab("Rhat values") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(plot.title = element_text(size = 10)) + 
-  ggtitle("Rhat values\n of all coefficients")
-
-p2 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_bulk)) +
-  geom_point() +
-  geom_hline(yintercept = 2000, color = "red") +
-  annotate("text", x = 17, y = 1800, label = "Samples = 2000", 
-           hjust = 1, color = "red") + 
-  xlab("Index") +
-  ylab("Bulk ESS values") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(plot.title = element_text(size = 10)) + 
-  ggtitle("Bulk effective sample size\n of all coefficients")
-
-p3 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_tail)) +
-  geom_point() +
-  geom_hline(yintercept = 2000, color = "red") +
-  annotate("text", x = 17, y = 1800, label = "Samples = 2000", 
-           hjust = 1, color = "red") + 
-  xlab("Index") +
-  ylab("Tail ESS values") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(plot.title = element_text(size = 10)) + 
-  ggtitle("Tail effective sample size\n of all coefficients")
-
-grid.arrange(p1, p2, p3, ncol = 3)
-```
-## Posterior predictive checks
-
-```{r, echo=FALSE}
-metricsName <- c("Accuracy", "Precision", "Recall", "F1")
-metricsSummary <- data.frame(Metrics=metricsName)
-metricsSummary$Accuracy <- NULL
-metricsSummary$Precision <- NULL
-metricsSummary$Recall <- NULL
-metricsSummary$F1 <- NULL
-#print(metricsSummary)
-sumTP <- 0
-sumTN <- 0
-sumFP <- 0
-sumFN <- 0
-listTrue <- c()
-listPred <- c()
-for (k in 1:K){
-  predicted_train = c()
-  for (i in 1:N_list[[k]]){
-
-    draws <- separate_sampling$draws(paste("label_train_pred[",k,",",i,"]", sep=""), format = "matrix")
-    #print(as.vector(draws[1, 1]))
-    predicted_train <- c(predicted_train, as.vector(draws[1, ]))
-  }
-  #draws <- separate_sampling$draws(paste("label_train_pred[",i,"]"), format = "matrix")
-  true_train = label_list[[k]][1:N_list[[k]]]
-  confusion_matrix <- table(predicted_train, true_train)
-  #print(confusion_matrix)
-  listTrue <- c(listTrue, true_train)
-  listPred <- c(listPred, predicted_train)
-  #print(listTrue)
-  #print(listPred)
-  TP <- confusion_matrix[2,2]
-  TN <- confusion_matrix[1,1]
-  FP <-confusion_matrix[1,2]
-  FN <-confusion_matrix[2,1]
-  #cat(TP,TN,FP,FN)
-  sumTP <- sumTP + TP
-  sumTN <- sumTN + TN
-  sumFP <- sumFP + FP
-  sumFN <- sumFN + FN
-  accuracy <- (TP+TN)/(TP+FP+FN+TN) 
-  precision <- TP/(TP+FP)
-  recall <- TP/(TP+FN)
-  f1 <-  2*(precision*recall)/(precision+recall)
-  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
-}
-accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
-prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
-sensitivity <- sumTP/(sumTP+sumFN)
-specificity <- sumFN/(sumFN+sumFP)
-precision <- sumTP/(sumTP+sumFP)
-recall <- sumTP/(sumTP+sumFN)
-f1 <-  2*(precision*recall)/(precision+recall)
-metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
-metricsSummary
-```
-
-```{r, warning = FALSE}
-confusion_matrix <- tibble("actual" = listTrue,
-                     "prediction" = listPred)
-
-
-basic_table <- table(confusion_matrix)
-cfm <- as_tibble(basic_table)
-plot_confusion_matrix(cfm, 
-                      target_col = "actual", 
-                      prediction_col = "prediction",
-                      counts_col = "n", palette = "Oranges")
-```
-
-## Predictive performance assessment
-
-```{r, echo=FALSE}
-metricsName <- c("Accuracy", "Precision", "Recall", "F1")
-metricsSummary <- data.frame(Metrics=metricsName)
-metricsSummary$Accuracy <- NULL
-metricsSummary$Precision <- NULL
-metricsSummary$Recall <- NULL
-metricsSummary$F1 <- NULL
-#print(metricsSummary)
-sumTP <- 0
-sumTN <- 0
-sumFP <- 0
-sumFN <- 0
-listTrue <- c()
-listPred <- c()
-for (k in 1:K){
-  predicted_test = c()
-  for (i in 1:M_list[[k]]){
-    draws <- separate_sampling$draws(paste("label_test_pred[",k,",",i,"]", sep=""), format = "matrix")
-    predicted_test <- c(predicted_test, as.vector(draws[1, ]))
-  }
-  true_test = label_test_list[[k]][1:M_list[[k]]]
-  confusion_matrix <- table(predicted_test, true_test)
-  listTrue <- c(listTrue, true_test)
-  listPred <- c(listPred, predicted_test)
-
-  TP <- confusion_matrix[2,2]
-  TN <- confusion_matrix[1,1]
-  FP <-confusion_matrix[1,2]
-  FN <-confusion_matrix[2,1]
-
-  sumTP <- sumTP + TP
-  sumTN <- sumTN + TN
-  sumFP <- sumFP + FP
-  sumFN <- sumFN + FN
-  accuracy <- (TP+TN)/(TP+FP+FN+TN) 
-  precision <- TP/(TP+FP)
-  recall <- TP/(TP+FN)
-  f1 <-  2*(precision*recall)/(precision+recall)
-  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
-}
-accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
-prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
-sensitivity <- sumTP/(sumTP+sumFN)
-specificity <- sumFN/(sumFN+sumFP)
-precision <- sumTP/(sumTP+sumFP)
-recall <- sumTP/(sumTP+sumFN)
-f1 <-  2*(precision*recall)/(precision+recall)
-metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
-metricsSummary
-```
-
-```{r, echo=FALSE}
-confusion_matrix <- tibble("actual" = listTrue,
-                     "prediction" = listPred)
-
-
-basic_table <- table(confusion_matrix)
-cfm <- as_tibble(basic_table)
-plot_confusion_matrix(cfm, 
-                      target_col = "actual", 
-                      prediction_col = "prediction",
-                      counts_col = "n", palette = "Oranges")
-```
-
-
-## Prior sensitivity analysis
-
-```{r, echo=FALSE}
-# Compiling the separate Stan model
-file_separate_prior_sensitivity1 <- file.path("models/model_separate_prior_sensitivity_1.stan")
-model_separate_prior_sensitivity1 <- cmdstan_model(file_separate_prior_sensitivity1)
-model_separate_prior_sensitivity1$compile(quiet = FALSE)
-
-file_separate_prior_sensitivity2 <- file.path("models/model_separate_prior_sensitivity_2.stan")
-model_separate_prior_sensitivity2 <- cmdstan_model(file_separate_prior_sensitivity2)
-model_separate_prior_sensitivity2$compile(quiet = FALSE)
-```
-
-The sampling running options
-```{r}
-  separate_sampling_prior_sensitivity1 <- model_separate_prior_sensitivity1$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
-  separate_sampling_prior_sensitivity2 <- model_separate_prior_sensitivity2$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
-```
-
-```{r, warning=FALSE, echo=FALSE}
-loo_loglike_separate0 <- separate_sampling$loo(variables="log_likelihood",r_eff=TRUE)
-loo_loglike_separate1 <- separate_sampling_prior_sensitivity1$loo(variables="log_likelihood",r_eff=TRUE)
-loo_loglike_separate2 <- separate_sampling_prior_sensitivity2$loo(variables="log_likelihood",r_eff=TRUE)
-
-cat("The elpd value of the separate model 0 is\n")
-print(loo_loglike_separate0$estimates[1][1])
-
-cat("The elpd value of the separate model 1 is\n")
-print(loo_loglike_separate1$estimates[1][1])
-
-cat("The elpd value of the separate model 2 is\n")
-print(loo_loglike_separate2$estimates[1][1])
-
-```
-
-```{r}
-loo_compare_separate <- loo_compare(x = list(loo_loglike_separate0=loo_loglike_separate0, loo_loglike_separate1=loo_loglike_separate1, loo_loglike_separate2=loo_loglike_separate2))
-print(loo_compare_separate)
-```
-
-We know that elpd_loo is the Bayesian LOO estimate of the expected log pointwise predictive density and is a sum of N individual pointwise log predictive densities. From the comparison table, elpd_diff is the difference in elpd_loo for two models. If more than two models are compared, the difference is computed relative to the model with highest elpd_loo, which is true in this case, as I am comparing three models
-
-The standard error of component-wise differences of elpd_loo (Eq 24 in VGG2017) between two models. This SE is smaller than the SE for individual models due to correlation (i.e., if some observations are easier and some more difficult to predict for all models)
-
-As quick rule: If elpd difference (elpd_diff in loo package) is less than 4, the difference is small. If elpd difference (elpd_diff in loo package) is larger than 4, then compare that difference to standard error of elpd_diff. When the difference (elpd_diff) is larger than 4, the number of observations is larger than 100 and the model is not badly misspecified then normal approximation and SE are quite reliable description of the uncertainty in the difference. Differences smaller than 4 are small and then the models have very similar predictive performance and it doesn’t matter if the normal approximation fails or SE is underestimated @akiLoo.
-
-SE assumes that normal approximation describes well the uncertainty related to the expected difference. Due to cross-validation folds not being independent, SE tends to be underestimated especially if the number of observations is small or the models are badly misspecified. The whole normal approximation tends to fail if the models are very similar or the models are badly misspecified. 
-
+## 7. Prior sensitivity analysis
 
 # Pooled model
 
-## Model description
+## 1. Model description
 
-## Prior choice and justifications
-Default protocol https is used by 81.5% of all the websites. @https://w3techs.com/technologies/details/ce-httpsdefault
+## 2. Prior choice and justifications
 
-There are 1.24 billion with complete WHOIS registration, while there are currently 1.7 billion websites. So the ratio of complete WHOIS website is 0.73.
+## 3. Stan code and running options
 
-## Stan code and running options
+## 4. Convergence diagnostics
 
-The Stan model code:
-```{r, echo = TRUE, results = 'hide'}
-"
+## 5.Posterior predictive checks
 
-"
-```
+## 6. Predictive performance assessment
 
-```{r, echo=FALSE}
-# Compiling the separate Stan model
-file_pooled <- file.path("models/model_pooled.stan")
-model_pooled <- cmdstan_model(file_pooled)
-model_pooled$compile(quiet = FALSE)
-```
-
-The sampling running options
-
-```{r}
-pooled_sampling <- model_pooled$sample(data = stan_data, chains=4, 
-  iter_warmup = 1000, iter_sampling = 1000)#, refresh=0)
-```
-
-```{r, echo=FALSE}
-# Set up the plotting grid
-par(mfrow = c(3,3))
-
-row_labels <- c(" θ(JS length)","θ(JS obf. length)","θ(https)","θ(whois)", "intercept", "HTTPS coefficient", "WHOIS coefficient","JS length coefficient","JS obf. length coefficient")
-row_names <- c("theta_js_len","theta_js_obf_len","theta_https","theta_whois","intercept","https_coeff","whois_coeff","js_len_coeff","js_obf_len_coeff")
-
-#pooled_sampling$summary()
-# Loop through the countries
-for(i in 1:9){
-    # Create the subplot
-    hist(pooled_sampling$draws(row_names[i]), main=row_labels[i], xlab=row_labels[i])
-  }
-
-```
-
-## Convergence diagnostics
-
-MCMC convergence chains visualization
-```{r, echo=FALSE}
-plotConvergence <- function (draws, paramName){
-  chain1 <- as.vector(draws[1:1000, 1])
-  chain2 <- as.vector(draws[1001:2000, 1])
-  chain3 <- as.vector(draws[2001:3000, 1])
-  chain4 <- as.vector(draws[3001:4000, 1])
-  iters = length(chain1)
-  indices <- 1:iters
-  data <- data.frame(indices, chain1, chain2, 
-                              chain3, chain4)
-  
-  p <- ggplot(data, aes(x=indices)) +
-    ggtitle(paste("Pooled model - Convergence of",paramName,"\n",iters,"sampling iterations, no warm-up")) +
-    xlab("iteration") + 
-    ylab(paramName) +
-    theme(plot.title = element_text(hjust = 0.5, size=10), legend.position = "right") +
-    geom_line(aes(y = chain1, color = "chain1")) + 
-    geom_line(aes(y = chain2, color = "chain2")) +
-    geom_line(aes(y = chain3, color = "chain3")) + 
-    geom_line(aes(y = chain4, color = "chain4")) +
-    scale_color_manual(name = "MCMC", values = c("chain1" = "red", "chain2" = "blue", "chain3" = "green", "chain4" = "black"))
-  return(p)
-}
-
-intercept_draws <- pooled_sampling$draws("intercept", format = "matrix")
-p1 <- plotConvergence(intercept_draws, "intercept")
-
-https_draws <- pooled_sampling$draws("https_coeff", format = "matrix")
-p2 <- plotConvergence(https_draws, "https coefficient")
-
-grid.arrange(p1, p2, ncol = 2)
-# whois_draws <- pooled_sampling$draws("whois_coeff[1]", format = "matrix")
-# plotConvergence(whois_draws, "whois coefficient")
-
-#js_len_draws <- pooled_sampling$draws("js_len_coeff[1]", format = "matrix")
-#plotConvergence(js_len_draws, "JS length coefficient")
-
-#js_obf_len_draws <- pooled_sampling$draws("js_obf_len_coeff[1]", format = "matrix")
-#plotConvergence(js_obf_len_draws, "JS obfuscated length coefficient")
-```
-
-HMC specific convergence diagnostics
-```{r, eval=TRUE, include=TRUE}
-pooled_sampling$diagnostic_summary()
-```
-
-$\hat{R}$-values and effective sample size
-```{r, echo=FALSE}
-summaryDiagnostics = data.frame()
-for (i in 1:K){
-  summaryDiagnosticsCountry <- pooled_sampling$summary(c("intercept","https_coeff",
-    "whois_coeff","js_len_coeff","js_obf_len_coeff"))[, c("variable", "rhat", "ess_bulk", "ess_tail")]
- summaryDiagnostics <- rbind(summaryDiagnostics, summaryDiagnosticsCountry)
- 
-}
-summaryDiagnostics$variable <- 1:15 
-summaryDiagnostics <- summaryDiagnostics %>% rename(index = variable)
-
-p1 <- ggplot(summaryDiagnostics, aes(x = index, y = rhat)) +
-  geom_point() +
-  geom_hline(yintercept = 1.05, color = "red") +
-  annotate("text", x = 15, y = 1.055, label = "critical Rhat value = 1.05", 
-           hjust = 1, color = "red") + 
-  xlab("Index") +
-  ylab("Rhat values") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(plot.title = element_text(size = 10)) + 
-  ggtitle("Rhat values\n of all coefficients")
-
-p2 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_bulk)) +
-  geom_point() +
-  geom_hline(yintercept = 2000, color = "red") +
-  annotate("text", x = 17, y = 1800, label = "Samples = 2000", 
-           hjust = 1, color = "red") + 
-  xlab("Index") +
-  ylab("Bulk ESS values") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(plot.title = element_text(size = 10)) + 
-  ggtitle("Bulk effective sample size\n of all coefficients")
-
-p3 <- ggplot(summaryDiagnostics, aes(x = index, y = ess_tail)) +
-  geom_point() +
-  geom_hline(yintercept = 2000, color = "red") +
-  annotate("text", x = 17, y = 1800, label = "Samples = 2000", 
-           hjust = 1, color = "red") + 
-  xlab("Index") +
-  ylab("Tail ESS values") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(plot.title = element_text(size = 10)) + 
-  ggtitle("Tail effective sample size\n of all coefficients")
-
-grid.arrange(p1, p2, p3, ncol = 3)
-```
-## Posterior predictive checks
-
-```{r, echo=FALSE}
-metricsName <- c("Accuracy", "Precision", "Recall", "F1")
-metricsSummary <- data.frame(Metrics=metricsName)
-metricsSummary$Accuracy <- NULL
-metricsSummary$Precision <- NULL
-metricsSummary$Recall <- NULL
-metricsSummary$F1 <- NULL
-#print(metricsSummary)
-sumTP <- 0
-sumTN <- 0
-sumFP <- 0
-sumFN <- 0
-listTrue <- c()
-listPred <- c()
-for (k in 1:K){
-  predicted_train = c()
-  for (i in 1:N_list[[k]]){
-
-    draws <- pooled_sampling$draws(paste("label_train_pred[",k,",",i,"]", sep=""), format = "matrix")
-    #print(as.vector(draws[1, 1]))
-    predicted_train <- c(predicted_train, as.vector(draws[1, ]))
-  }
-  #draws <- pooled_sampling$draws(paste("label_train_pred[",i,"]"), format = "matrix")
-  true_train = label_list[[k]][1:N_list[[k]]]
-  confusion_matrix <- table(predicted_train, true_train)
-  #print(confusion_matrix)
-  listTrue <- c(listTrue, true_train)
-  listPred <- c(listPred, predicted_train)
-  #print(listTrue)
-  #print(listPred)
-  TP <- confusion_matrix[2,2]
-  TN <- confusion_matrix[1,1]
-  FP <-confusion_matrix[1,2]
-  FN <-confusion_matrix[2,1]
-  #cat(TP,TN,FP,FN)
-  sumTP <- sumTP + TP
-  sumTN <- sumTN + TN
-  sumFP <- sumFP + FP
-  sumFN <- sumFN + FN
-  accuracy <- (TP+TN)/(TP+FP+FN+TN) 
-  precision <- TP/(TP+FP)
-  recall <- TP/(TP+FN)
-  f1 <-  2*(precision*recall)/(precision+recall)
-  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
-}
-accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
-prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
-sensitivity <- sumTP/(sumTP+sumFN)
-specificity <- sumFN/(sumFN+sumFP)
-precision <- sumTP/(sumTP+sumFP)
-recall <- sumTP/(sumTP+sumFN)
-f1 <-  2*(precision*recall)/(precision+recall)
-metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
-metricsSummary
-```
-
-```{r, warning = FALSE}
-confusion_matrix <- tibble("actual" = listTrue,
-                     "prediction" = listPred)
-
-
-basic_table <- table(confusion_matrix)
-cfm <- as_tibble(basic_table)
-plot_confusion_matrix(cfm, 
-                      target_col = "actual", 
-                      prediction_col = "prediction",
-                      counts_col = "n", palette = "Oranges")
-```
-
-## Predictive performance assessment
-
-```{r, echo=FALSE}
-metricsName <- c("Accuracy", "Precision", "Recall", "F1")
-metricsSummary <- data.frame(Metrics=metricsName)
-metricsSummary$Accuracy <- NULL
-metricsSummary$Precision <- NULL
-metricsSummary$Recall <- NULL
-metricsSummary$F1 <- NULL
-#print(metricsSummary)
-sumTP <- 0
-sumTN <- 0
-sumFP <- 0
-sumFN <- 0
-listTrue <- c()
-listPred <- c()
-for (k in 1:K){
-  predicted_test = c()
-  for (i in 1:M_list[[k]]){
-    draws <- pooled_sampling$draws(paste("label_test_pred[",k,",",i,"]", sep=""), format = "matrix")
-    predicted_test <- c(predicted_test, as.vector(draws[1, ]))
-  }
-  true_test = label_test_list[[k]][1:M_list[[k]]]
-  confusion_matrix <- table(predicted_test, true_test)
-  listTrue <- c(listTrue, true_test)
-  listPred <- c(listPred, predicted_test)
-
-  TP <- confusion_matrix[2,2]
-  TN <- confusion_matrix[1,1]
-  FP <-confusion_matrix[1,2]
-  FN <-confusion_matrix[2,1]
-
-  sumTP <- sumTP + TP
-  sumTN <- sumTN + TN
-  sumFP <- sumFP + FP
-  sumFN <- sumFN + FN
-  accuracy <- (TP+TN)/(TP+FP+FN+TN) 
-  precision <- TP/(TP+FP)
-  recall <- TP/(TP+FN)
-  f1 <-  2*(precision*recall)/(precision+recall)
-  metricsSummary[,countries[k]] <- c(accuracy, precision,recall,f1)
-}
-accuracy <- (sumTP+sumTN)/(sumTP+sumFP+sumFN+sumTN) 
-prevalence <- (sumTP+sumFN)/(sumTP+sumFP+sumFN+sumTN) 
-sensitivity <- sumTP/(sumTP+sumFN)
-specificity <- sumFN/(sumFN+sumFP)
-precision <- sumTP/(sumTP+sumFP)
-recall <- sumTP/(sumTP+sumFN)
-f1 <-  2*(precision*recall)/(precision+recall)
-metricsSummary[,"All countries"] <- c(accuracy, precision,recall,f1)
-metricsSummary
-```
-
-```{r, echo=FALSE}
-confusion_matrix <- tibble("actual" = listTrue,
-                     "prediction" = listPred)
-
-
-basic_table <- table(confusion_matrix)
-cfm <- as_tibble(basic_table)
-plot_confusion_matrix(cfm, 
-                      target_col = "actual", 
-                      prediction_col = "prediction",
-                      counts_col = "n", palette = "Oranges")
-```
-
-
-## Prior sensitivity analysis
-
-```{r, echo=FALSE}
-# Compiling the pooled Stan model
-file_pooled_prior_sensitivity1 <- file.path("models/model_pooled_prior_sensitivity_1.stan")
-model_pooled_prior_sensitivity1 <- cmdstan_model(file_pooled_prior_sensitivity1)
-model_pooled_prior_sensitivity1$compile(quiet = FALSE)
-
-file_pooled_prior_sensitivity2 <- file.path("models/model_pooled_prior_sensitivity_2.stan")
-model_pooled_prior_sensitivity2 <- cmdstan_model(file_pooled_prior_sensitivity2)
-model_pooled_prior_sensitivity2$compile(quiet = FALSE)
-```
-
-The sampling running options
-```{r}
-  pooled_sampling_prior_sensitivity1 <- model_pooled_prior_sensitivity1$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
-  pooled_sampling_prior_sensitivity2 <- model_pooled_prior_sensitivity2$sample(data = stan_data, chains=4, iter_warmup = 1000, iter_sampling = 1000, refresh=0)
-```
-
-```{r, warning=FALSE, echo=FALSE}
-loo_loglike_pooled0 <- pooled_sampling$loo(variables="log_likelihood",r_eff=TRUE)
-loo_loglike_pooled1 <- pooled_sampling_prior_sensitivity1$loo(variables="log_likelihood",r_eff=TRUE)
-loo_loglike_pooled2 <- pooled_sampling_prior_sensitivity2$loo(variables="log_likelihood",r_eff=TRUE)
-
-cat("The elpd value of the pooled model 0 is\n")
-print(loo_loglike_pooled0$estimates[1][1])
-
-cat("The elpd value of the pooled model 1 is\n")
-print(loo_loglike_pooled1$estimates[1][1])
-
-cat("The elpd value of the pooled model 2 is\n")
-print(loo_loglike_pooled2$estimates[1][1])
-
-```
-
-```{r}
-loo_compare_pooled <- loo_compare(x = list(loo_loglike_pooled0=loo_loglike_pooled0, loo_loglike_pooled1=loo_loglike_pooled1, loo_loglike_pooled2=loo_loglike_pooled2))
-print(loo_compare_pooled)
-```
-
-We know that elpd_loo is the Bayesian LOO estimate of the expected log pointwise predictive density and is a sum of N individual pointwise log predictive densities. From the comparison table, elpd_diff is the difference in elpd_loo for two models. If more than two models are compared, the difference is computed relative to the model with highest elpd_loo, which is true in this case, as I am comparing three models
-
-The standard error of component-wise differences of elpd_loo (Eq 24 in VGG2017) between two models. This SE is smaller than the SE for individual models due to correlation (i.e., if some observations are easier and some more difficult to predict for all models)
-
-As quick rule: If elpd difference (elpd_diff in loo package) is less than 4, the difference is small. If elpd difference (elpd_diff in loo package) is larger than 4, then compare that difference to standard error of elpd_diff. When the difference (elpd_diff) is larger than 4, the number of observations is larger than 100 and the model is not badly misspecified then normal approximation and SE are quite reliable description of the uncertainty in the difference. Differences smaller than 4 are small and then the models have very similar predictive performance and it doesn’t matter if the normal approximation fails or SE is underestimated @akiLoo.
-
-SE assumes that normal approximation describes well the uncertainty related to the expected difference. Due to cross-validation folds not being independent, SE tends to be underestimated especially if the number of observations is small or the models are badly misspecified. The whole normal approximation tends to fail if the models are very similar or the models are badly misspecified. 
-
+## 7. Prior sensitivity analysis
 
 # Model comparison
 
-```{r, echo=FALSE}
-loo_pooled <- separate_sampling$loo(variables="log_likelihood",r_eff=TRUE)
-cat("The PSIS-LOO elpd value of the separate model is\n")
-print(loo_separate$estimates[1][1])
-
-pareto_k_separate <- loo_separate$diagnostics$pareto_k
-cat("\nThe k-hat values of the separate model is\n")
-print(loo_separate)
-
-barplot(pareto_k_separate , main = "(separate model) k-hat diagnostics\n critical red line = 0.7", xlab = "k-hat values", ylab = "magnitude", ylim=c(0,1), col = "blue")
-abline(h=0.7, col="red", lwd=2)
-
-
-
-loo_pooled <- pooled_sampling$loo(variables="log_likelihood",r_eff=TRUE)
-cat("The PSIS-LOO elpd value of the pooled model is\n")
-print(loo_pooled$estimates[1][1])
-
-pareto_k_pooled <- loo_pooled$diagnostics$pareto_k
-cat("\nThe k-hat values of the pooled model is\n")
-print(loo_pooled)
-
-barplot(pareto_k_pooled, main = "(pooled model) k-hat diagnostics\n critical red line = 0.7", xlab = "k-hat values", ylab = "magnitude", ylim=c(0,1), col = "blue")
-abline(h=0.7, col="red", lwd=2)
-
-```
-```{r}
-df <- data.frame(pareto_k_separate = pareto_k_separate, 
-                 pareto_k_pooled = pareto_k_pooled)
-
-ggplot(df, aes(x = 1:length(pareto_k_separate), 
-               y = pareto_k_separate, 
-               fill = "pareto_k_separate")) + 
-  geom_bar(stat = "identity", width = 0.5) + 
-  geom_bar(aes(x = 1:length(pareto_k_pooled) + 0.5, 
-               y = pareto_k_pooled, 
-               fill = "pareto_k_pooled"), 
-          stat = "identity", width = 0.5) + 
-  scale_fill_manual(values = c("pareto_k_separate" = "purple", 
-                                "pareto_k_pooled" = "orange")) + 
-  labs(title = "PSIS k-values of the separate and pooled models", 
-       x = "Index", 
-       y = "Value", 
-       fill = "") + 
-  geom_hline(yintercept = 0.7, color = "darkred", size = 1) +
-  annotate("text", x = 40, y = 0.75, label = "bad k-values = 0.7", color = "darkred", hjust = 1, vjust = 0) +
-  geom_hline(yintercept = 1, color = "red", size = 1) +
-  annotate("text", x = 40, y = 1.05, label = "very bad k-values = 1", color = "red", hjust = 1, vjust = 0) +
-  theme_classic() +
-  theme(plot.title = element_text(hjust = 0.5, size=15)) +
-  theme(legend.position = "bottom")
-```
-The ELPD is the theoretical expected log pointwise predictive density for a new dataset (Eq 1 in VGG2017), which can be estimated, e.g., using cross-validation. elpd_loo is the Bayesian LOO estimate of the expected log pointwise predictive density (Eq 4 in VGG2017) and is a sum of N individual pointwise log predictive densities.
-
-As quick rule: If elpd difference (elpd_diff in loo package) is less than 4, the difference is small (Sivula, Magnusson and Vehtari, 2020). If elpd difference (elpd_diff in loo package) is larger than 4, then compare that difference to standard error of elpd_diff (provided e.g. by loo package) (Sivula, Magnusson and Vehtari, 2020). 
-
-p_loo (effective number of parameters)
-p_loo is the difference between elpd_loo and the non-cross-validated log posterior predictive density. It describes how much more difficult it is to predict future data than the observed data. Asymptotically under certain regularity conditions, p_loo can be interpreted as the effective number of parameters. In well behaving cases p_loo < N and p_loo < p, where p is the total number of parameters in the model. p_loo > N or p_loo > p indicates that the model has very weak predictive capability and may indicate a severe model misspecification. See below for more on interpreting p_loo when there are warnings about high Pareto k diagnostic values
-
-p_loo is called the effective number of parameters and can be computed as the difference between elpd_loo and the non-cross-validated log posterior predictive density (Equations (4) and (3) in Vehtari, Gelman and Gabry (2017)). It is not needed for elpd_loo, but has diagnostic value. It describes how much more difficult it is to predict future data than the observed data. Asymptotically under certain regularity conditions, p_loo can be interpreted as the effective number of parameters. In well behaving cases p_loo <N and p_loo <p, where p is the total number of parameters in the model. p_loo >N or p_loo >p indicates that the model has very weak predictive capability.
-
-
-The Pareto k estimate is a diagnostic for Pareto smoothed importance sampling (PSIS), which is used to compute components of elpd_loo. In importance-sampling LOO (the full posterior distribution is used as the proposal distribution). The Pareto k diagnostic estimates how far an individual leave-one-out distribution is from the full distribution. If leaving out an observation changes the posterior too much then importance sampling is not able to give reliable estimate. If k<0.5, then the corresponding component of elpd_loo is estimated with high accuracy. If 0.5<k<0.7 the accuracy is lower, but still ok. If k>0.7, then importance sampling is not able to provide useful estimate for that component/observation. Pareto k is also useful as a measure of influence of an observation. Highly influential observations have high k values. Very high k values often indicate model misspecification, outliers or mistakes in data processing.
-
-Interpreting p_loo when Pareto k is large
-If k > 0.7 then we can also look at the p_loo estimate for some additional information about the problem:
-
-If p_loo << p (the total number of parameters in the model), then the model is likely to be misspecified. Posterior predictive checks (PPCs) are then likely to also detect the problem. Try using an overdispersed model, or add more structural information (nonlinearity, mixture model, etc.).
-
-If p_loo < p and the number of parameters p is relatively large compared to the number of observations (e.g., p>N/5), it is likely that the model is so flexible or the population prior so weak that it’s difficult to predict the left out observation (even for the true model). This happens, for example, in the simulated 8 schools (in VGG2017), random effect models with a few observations per random effect, and Gaussian processes and spatial models with short correlation lengths.
-
-If p_loo > p, then the model is likely to be badly misspecified. If the number of parameters p<<N, then PPCs are also likely to detect the problem. See the case study at https://avehtari.github.io/modelselection/roaches.html for an example. If p is relatively large compared to the number of observations, say p>N/5 (more accurately we should count number of observations influencing each parameter as in hierarchical models some groups may have few observations and other groups many), it is possible that PPCs won't detect the problem
-
-Online documentations: 
-FAQ: https://mc-stan.org/loo/articles/online-only/faq.html#elpd_interpretation
-Glossaries: https://mc-stan.org/loo/reference/loo-glossary.html
-
 # Discussion
 
-## Existing issues
-
-## Potential improvements
+* Existing issues
++
++
+* Potential improvements
++
++
 
 # Conclusion
 
